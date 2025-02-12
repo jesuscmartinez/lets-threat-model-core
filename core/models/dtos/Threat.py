@@ -1,0 +1,89 @@
+from pydantic import BaseModel, Field
+from uuid import UUID
+from core.models.enums import StrideCategory, Level
+from typing import List
+import uuid
+
+
+# Input schema for creating
+class AgentThreat(BaseModel):
+    name: str = Field(..., description="The name of the identified threat.")
+    description: str | None = Field(
+        None, description="Detailed explanation of the threat."
+    )
+    stride_category: StrideCategory = Field(
+        ..., description="STRIDE security category."
+    )
+    component_names: List[str] = Field(
+        ..., description="The name of the component affected by the threat."
+    )
+    component_ids: List[UUID] = Field(
+        ..., description="The ID of the component affected by the threat."
+    )
+    attack_vector: str = Field(..., description="How the attack is executed.")
+    impact_level: Level = Field(
+        ..., description="The severity or impact of the attack."
+    )
+    risk_rating: Level = Field(
+        ..., description="The overall risk assessment of the threat."
+    )
+    mitigations: List[str] = Field(
+        ...,
+        description="Recommended controls, countermeasures, or design changes. Where applicable, reference relevant standards or frameworks (e.g., OWASP, NIST, ISO) for implementing recommended controls.",
+    )
+
+    def __hash__(self):
+        return hash(self.description)
+
+    def __eq__(self, other):
+        if not isinstance(other, AgentThreat):
+            return False
+        return self.description == other.description
+
+    class Config:
+        from_attributes = True
+        json_schema_extra = {
+            "example": {
+                "name": "SQL Injection on Repo Creation",
+                "description": "An attacker can inject malicious SQL queries in the 'Repo Name' input field to gain unauthorized access or manipulate database records.",
+                "stride_category": "Tampering",
+                "component_names": ["Postgres Database"],
+                "component_ids": ["uuid_3"],
+                "attack_vector": "User injects SQL commands via a web form input",
+                "impact_level": "High",
+                "risk_rating": "Critical",
+                "mitigations": [
+                    "Use parameterized queries, ORM frameworks, and input validation to prevent SQL injection."
+                ],
+            }
+        }
+
+
+# Output schema for returning data
+class Threat(AgentThreat):
+    id: UUID = Field(
+        default_factory=uuid.uuid4, description="Unique identifier for the threat."
+    )
+    data_flow_report_id: UUID = Field(
+        ..., description="The ID of the data flow report where the threat was detected."
+    )
+
+    class Config:
+        from_attributes = True
+        json_schema_extra = {
+            "example": {
+                "id": "uuid_1",
+                "data_flow_report_id": "uuid_1",
+                "name": "SQL Injection on Repo Creation",
+                "description": "An attacker can inject malicious SQL queries in the 'Repo Name' input field to gain unauthorized access or manipulate database records.",
+                "stride_category": "Tampering",
+                "component_names": ["Postgres Database"],
+                "component_id": ["uuid_2"],
+                "attack_vector": "User injects SQL commands via a web form input",
+                "impact_level": "High",
+                "risk_rating": "Critical",
+                "mitigations": [
+                    "Use parameterized queries, ORM frameworks, and input validation to prevent SQL injection."
+                ],
+            }
+        }
