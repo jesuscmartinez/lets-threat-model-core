@@ -14,8 +14,8 @@ This script generates a **threat model report** in **Markdown format** from a pr
 ## 🚀 Installation
 ### **1. Clone the Repository**
 ```sh
- git clone https://github.com/your-repo/threat-model-generator.git
- cd threat-model-generator
+ git clone https://github.com/jesuscmartinez/lets-threat-model-core
+ cd lets-threat-model-core
 ```
 
 ### **2. Install Dependencies**
