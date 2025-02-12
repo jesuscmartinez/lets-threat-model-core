@@ -73,9 +73,9 @@ asset:
 
 repositories:
   - name: "Test Repo 1"
-    url: "https://github.com/user/repo1.git"
+    url: "github.com/user/repo1.git"
   - name: "Test Repo 2"
-    url: "https://github.com/user/repo2.git"
+    url: "github.com/user/repo2.git"
 ```
 
 ### **2. Run the Script**
