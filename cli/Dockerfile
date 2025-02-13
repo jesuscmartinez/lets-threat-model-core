@@ -8,6 +8,9 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# Install system dependencies (including Git)
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
 # Create a non-root user with limited permissions
 RUN groupadd -r cli_user && useradd -r -g cli_user -d /app -s /sbin/nologin cli_user
 
@@ -17,12 +20,12 @@ COPY --chown=cli_user:cli_user cli/requirements.txt /app/requirements.txt
 # Install dependencies
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# Copy shared code to the base image
+# Copy core code to the base image
 COPY core /app/core
 
 COPY cli/. /app/
 
-# Ensure Python can locate the shared module
+# Ensure Python can locate the core module
 ENV PYTHONPATH="/app/core"
 
 USER cli_user

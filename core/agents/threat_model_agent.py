@@ -316,6 +316,7 @@ class ThreatModelAgent:
         Objective:
         Identify and merge only truly similar threats, ensuring each merged threat retains all relevant attack vectors, affected components, and mitigation strategies.
             - Do NOT merge threats if they are not similar.
+            - Do NOT merge threats if they are different categories.
 
         Instructions:
         1. Check for Similarity Before Merging
