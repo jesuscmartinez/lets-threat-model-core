@@ -100,6 +100,10 @@ docker build -t threat_model_generator -f cli/Dockerfile .
 docker run --rm -it -v $(pwd)/cli_data:/app/data --env-file cli/.env threat_model_generator python main.py data/input_data.yaml -o data/threat_model_report.md
 ```
 
+## Example Output:
+![Juiceshop initial steps...](images/runtime_1.png)
+
+
 #### **Access the Generated Report**
 The Markdown report will be available in the `cli_data/` directory on your host machine:
 ```sh
