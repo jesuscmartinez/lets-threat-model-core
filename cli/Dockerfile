@@ -4,7 +4,8 @@ FROM python:3.11-slim AS base
 # Set up environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
-    HOME=/app
+    HOME=/app \
+    HF_HOME=/tmp/cache
 
 WORKDIR /app
 

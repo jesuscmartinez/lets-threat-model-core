@@ -1,14 +1,12 @@
 gitpython==3.1.43
 python-dotenv==1.0.1
-langchain-core>=0.3.27
-langchain-text-splitters==0.3.0
-langchain-ollama==0.2.2
-langchain-openai==0.2.14
-langchain-anthropic==0.3.7
-langgraph==0.2.62
-langgraph-checkpoint-postgres==2.0.10
-ollama==0.4.4
-aiofiles==24.1.0
-unstructured[all-docs]==0.16.15
-nltk==3.9.1
-graphviz==0.20.3
+langchain-core
+langchain
+# langchain-text-splitters==0.3.0
+langchain-ollama
+langchain-openai
+langchain-anthropic
+langgraph
+langgraph-checkpoint-postgres
+graphviz
+transformers

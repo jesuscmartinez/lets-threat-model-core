@@ -1,11 +1,14 @@
 import os
+import re
 from dotenv import load_dotenv
 import logging
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
-from typing import Optional
+from langchain.chat_models import init_chat_model
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_core.language_models.chat_models import BaseChatModel
+from typing import Optional
+from openai import base_url
+from pydantic import SecretStr
+from regex import D
 
 
 # Load environment variables
@@ -19,10 +22,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Initialize rate limiter (Exponential backoff happens in retries)
 rate_limiter = InMemoryRateLimiter(
-    requests_per_second=7,  # OpenAi limit is 500 per minute https://platform.openai.com/settings/organization/limits
-    check_every_n_seconds=0.1,  # Wake up every 100 ms to check whether allowed to make a request,
-    max_bucket_size=10,  # Controls the maximum burst size.
+    requests_per_second=7,  # OpenAI limit is 500 per minute
+    check_every_n_seconds=0.1,  # Wake up every 100ms to check the limit
+    max_bucket_size=10,  # Maximum burst requests
 )
 
 
@@ -30,59 +34,51 @@ class ChatModelManager:
     @classmethod
     def get_model(
         cls,
-        model_name: Optional[str] = None,
-        anthropic_api_key: Optional[str] = None,
-        openai_api_key: Optional[str] = None,
-        temperature: float = 0.7,
-        rate_limiter: InMemoryRateLimiter = rate_limiter,
+        provider: str,
+        model: str,
+        api_key: Optional[SecretStr] = None,
+        temperature: float = 0.0,
+        rate_limiter: Optional[InMemoryRateLimiter] = rate_limiter,
     ) -> BaseChatModel:
         """
-        Get a chat model dynamically using LangChain, based on user input or environment variables.
+        Get a chat model dynamically based on the provider with rate limiting & retries.
 
-        :param model_name: The model key to use (e.g., 'anthropic', 'gpt4', 'gpt4mini', 'openai').
-        :param anthropic_api_key: API key for Anthropic (if using Claude models).
-        :param openai_api_key: API key for OpenAI (if using GPT models).
-        :param temperature: Temperature setting for response randomness.
-        :return: LangChain-compatible chat model instance.
+        Args:
+            provider: The model provider ('llama', 'openai', 'anthropic')
+            model: The model name to use
+            api_key: API key for the provider (if required)
+            temperature: Temperature setting for response randomness
+            rate_limiter: Optional rate limiter
+            max_retries: Maximum number of retry attempts
+
+        Returns:
+            LangChain-compatible chat model instance with retry functionality
         """
+        try:
+            init_kwargs = {
+                "model_provider": provider,
+                "model": model,
+                "temperature": temperature,
+                "rate_limiter": rate_limiter,
+            }
+            if provider.lower() == "anthropic":
+                api_key = api_key or SecretStr(os.getenv("ANTHROPIC_API_KEY", ""))
+                init_kwargs["api_key"] = api_key
+            elif provider.lower() == "openai":
+                api_key = api_key or SecretStr(os.getenv("OPENAI_API_KEY", ""))
+                init_kwargs["api_key"] = api_key
 
-        # Load API keys from environment variables if not explicitly provided
-        anthropic_api_key = anthropic_api_key or os.getenv("ANTHROPIC_API_KEY", None)
-        openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY", None)
+                # these models are not supported due to OpenAI API limitations with structured output
+                if model.lower().startswith("o1-"):
+                    del init_kwargs[
+                        "temperature"
+                    ]  # OpenAI reasoning models don't support temperature for now
 
-        # Define available models dynamically using LangChain
-        base_models = {
-            "anthropic": ChatAnthropic(
-                model="claude-3-haiku-20240307",
-                temperature=temperature,
-                rate_limiter=rate_limiter,
-                anthropic_api_key=anthropic_api_key,
-            ),
-            "openai": ChatOpenAI(
-                temperature=temperature,
-                rate_limiter=rate_limiter,
-                openai_api_key=openai_api_key,
-            ),
-            "gpt-4o": ChatOpenAI(
-                model="gpt-4o",
-                temperature=temperature,
-                rate_limiter=rate_limiter,
-                openai_api_key=openai_api_key,
-            ),
-            "gpt-4o-mini": ChatOpenAI(
-                model="gpt-4o-mini",
-                temperature=temperature,
-                rate_limiter=rate_limiter,
-                openai_api_key=openai_api_key,
-            ),
-        }
+            elif provider.lower() == "ollama":
+                base_url = os.getenv("OLLAMA_BASE_URL", None)
+                init_kwargs["base_url"] = base_url
 
-        selected_model_key = model_name
+            return init_chat_model(**init_kwargs)
 
-        if selected_model_key not in base_models:
-            raise ValueError(
-                f"Invalid model selection: {selected_model_key}. "
-                f"Choose from {list(base_models.keys())}."
-            )
-
-        return base_models[selected_model_key]
+        except Exception as e:
+            raise RuntimeError(f"❌ Failed to create model instance: {str(e)}")

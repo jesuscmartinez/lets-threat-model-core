@@ -92,8 +92,6 @@ class ThreatModelDataAgent:
                 ..., description="A summary report of the threat model."
             )
 
-        parser = PydanticOutputParser(pydantic_object=Result)
-
         system_prompt = SystemMessagePromptTemplate.from_template(
             """
         Objective:
@@ -112,11 +110,7 @@ class ThreatModelDataAgent:
         - The purpose of the repositories and their connection to the asset.
         - The presence of data flow reports and why they are important.
         - The existence of potential threats and their impact on the asset.
-
-        Format Instructions:
-        {format_instructions}
-        """,
-            partial_variables={"format_instructions": parser.get_format_instructions()},
+        """
         )
 
         user_prompt = HumanMessagePromptTemplate.from_template(

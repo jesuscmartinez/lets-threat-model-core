@@ -100,15 +100,28 @@ docker build -t threat_model_generator -f cli/Dockerfile .
 docker run --rm -it -v $(pwd)/cli_data:/app/data --env-file cli/.env threat_model_generator python main.py data/input_data.yaml -o data/threat_model_report.md
 ```
 
-## Example Output:
-![Juiceshop initial steps...](images/runtime_1.png)
-
-
 #### **Access the Generated Report**
 The Markdown report will be available in the `cli_data/` directory on your host machine:
 ```sh
 cat cli_data/threat_model_report.md
 ```
+
+---
+## Example Output:
+### JuiceShop w/ GPT-4o-mini 
+Here is an example output when using GPT 4o-mini on OWASP Juiceshop
+
+Initial data flow report...
+![Juiceshop initial steps...](juiceshop_example_4o-mini/initial_data_flow.png)
+
+Threats...
+![Juiceshop threats...](juiceshop_example_4o-mini/threats.png)
+
+Data Flow Diagram
+![Juiceshop DFD](juiceshop_example_4o-mini/dfd.png)
+
+Threat Model Report...
+[Threat Model Report](juiceshop_example_4o-mini/threat_model_report.md)
 
 ---
 

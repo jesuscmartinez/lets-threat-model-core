@@ -1,7 +1,19 @@
+from email.mime import base
+import json
 import logging
 import os
 from typing import Any
 import uuid
+from langchain_core.prompts import (
+    SystemMessagePromptTemplate,
+    AIMessagePromptTemplate,
+)
+from langchain.chat_models.base import BaseChatModel
+from langchain_core.runnables import Runnable
+from pydantic import BaseModel
+from typing import Dict
+
+from regex import P
 
 # Configure logging
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -180,3 +192,19 @@ class AgentHelper:
         logger.debug("Finished numbered ID to UUID conversion")
 
         return data_flow_report
+
+
+def get_model_name(model: BaseChatModel):
+    """Retrieve the model name from any BaseChatModel instance."""
+    for attr in ["model_name", "model"]:
+        if hasattr(model, attr):
+            return getattr(model, attr)
+    return "Unknown Model"
+
+
+def is_o1_mini(model: BaseChatModel):
+    reasoning = False
+    if get_model_name(model).lower().startswith(("o1-")):
+        reasoning = True
+
+    return reasoning

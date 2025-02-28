@@ -1,3 +1,4 @@
+from pydantic import SecretStr
 from core.agents.repo_data_flow_agent import DataFlowAgent, Config
 from core.agents.threat_model_agent import ThreatModelAgent
 from core.models.dtos.Asset import Asset
@@ -7,7 +8,10 @@ from core.models.dtos.Threat import Threat, AgentThreat
 from core.agents.threat_model_data_agent import ThreatModelDataAgent
 from core.models.dtos.Repository import Repository
 from core.agents.chat_model_manager import ChatModelManager
-from core.services.reports import generate_mermaid_from_dataflow
+from core.services.reports import (
+    generate_mermaid_from_dataflow,
+    generate_mermaid_dataflow_diagram,
+)
 import logging
 import os
 import uuid
@@ -24,13 +28,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DATA_FLOW_AGENT_LLM = os.getenv("DATA_FLOW_AGENT_LLM")
-THREAT_MODEL_AGENT_LLM = os.getenv("THREAT_MODEL_AGENT_LLM")
-REPORT_AGENT_LLM = os.getenv("REPORT_AGENT_LLM")
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "")
+CATEGRORIZATION_AGENT_LLM = os.getenv("CATEGRORIZATION_AGENT_LLM", "")
+REVIEW_AGENT_LLM = os.getenv("REVIEW_AGENT_LLM", "")
+THREAT_MODEL_AGENT_LLM = os.getenv("THREAT_MODEL_AGENT_LLM", "")
+REPORT_AGENT_LLM = os.getenv("REPORT_AGENT_LLM", "")
 
 CONTEXT_WINDOW = int(os.getenv("CONTEXT_WINDOW", 0))
 USERNAME = os.getenv("USERNAME")
-PAT = os.getenv("PAT")
+PAT = SecretStr(os.getenv("PAT", ""))
 
 
 async def generate_threat_model(asset: Asset, repos: List[Repository]) -> ThreatModel:
@@ -40,17 +46,22 @@ async def generate_threat_model(asset: Asset, repos: List[Repository]) -> Threat
         *(generate_data_flow(repo) for repo in repos)
     )
 
-    # Generate threats concurrently
-    threat_lists = await asyncio.gather(
-        *(generate_threats(asset, report) for report in data_flow_reports)
-    )
+    # # Generate threats concurrently
+    # threat_lists = await asyncio.gather(
+    #     *(generate_threats(asset, report) for report in data_flow_reports)
+    # )
 
-    # Flatten the list of threats
-    all_threats = [
-        threat for report_threats in threat_lists for threat in report_threats
-    ]
+    # # Flatten the list of threats
+    # all_threats = [
+    #     threat for report_threats in threat_lists for threat in report_threats
+    # ]
+    all_threats = []
 
     diagrams = [generate_mermaid_from_dataflow(report) for report in data_flow_reports]
+
+    # diagrams = diagrams + [
+    #     generate_mermaid_dataflow_diagram(report) for report in data_flow_reports
+    # ]
 
     threat_model = ThreatModel(
         id=uuid.uuid4(),
@@ -82,7 +93,12 @@ async def generate_data_flow(repository: Repository):
 
             # Initialize AI-based DataFlowAgent
             data_flow_agent = DataFlowAgent(
-                model=ChatModelManager.get_model(model_name=DATA_FLOW_AGENT_LLM),
+                categorization_model=ChatModelManager.get_model(
+                    provider=LLM_PROVIDER, model=CATEGRORIZATION_AGENT_LLM
+                ),
+                review_model=ChatModelManager.get_model(
+                    provider=LLM_PROVIDER, model=REVIEW_AGENT_LLM
+                ),
                 repo_url=repository.url,
                 directory=temp_dir,
                 config=Config(username=USERNAME, pat=PAT),
@@ -134,7 +150,9 @@ async def generate_threats(
     )
     try:
         threat_model_agent = ThreatModelAgent(
-            model=ChatModelManager.get_model(model_name=THREAT_MODEL_AGENT_LLM)
+            model=ChatModelManager.get_model(
+                provider=LLM_PROVIDER, model=THREAT_MODEL_AGENT_LLM
+            )
         )
 
         seralized_asset = asset.model_dump(mode="json")
@@ -178,7 +196,9 @@ async def generate_threat_model_data(threat_model: ThreatModel) -> dict:
     )
     try:
         threat_model_data_agent = ThreatModelDataAgent(
-            model=ChatModelManager.get_model(model_name=REPORT_AGENT_LLM)
+            model=ChatModelManager.get_model(
+                provider=LLM_PROVIDER, model=REPORT_AGENT_LLM
+            )
         )
 
         serialized_threat_model = threat_model.model_dump(mode="json")
