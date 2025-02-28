@@ -1,25 +1,40 @@
 import logging
 import os
+import re
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_random_exponential,
+    retry_if_exception,
+)
+import httpx
 from typing import Any, TypedDict, List, Dict, Optional, Set
 from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.graph import StateGraph, START, END
 from tempfile import TemporaryDirectory
 from langchain_core.prompts import (
+    AIMessagePromptTemplate,
     SystemMessagePromptTemplate,
     HumanMessagePromptTemplate,
     ChatPromptTemplate,
 )
+from langchain_core.output_parsers import JsonOutputParser
+
+# from torch import mode
 from core.models.dtos.DataFlowReport import AgentDataFlowReport
 from core.models.dtos.File import File
-from langchain_core.output_parsers import PydanticOutputParser, JsonOutputParser
 import asyncio
-import aiofiles
+
+# import aiofiles
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pydantic import BaseModel, Field
 import fnmatch
 import json
 from git import Repo as GitRepo
-from core.agents.agent_tools import AgentHelper
+from core.agents.agent_tools import (
+    AgentHelper,
+    is_o1_mini,
+)
 
 # Configure logging
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -38,6 +53,7 @@ class Config:
     def __init__(
         self,
         context_window: int = 128000,
+        max_ouput_tokens: int = 16384,
         username: Optional[str] = None,
         pat: Optional[str] = None,
         review_max_file_in_batch: int = 2,
@@ -46,13 +62,14 @@ class Config:
         include_patterns: Optional[List[str]] = None,
         categorize_max_file_in_batch: int = 30,
         categorize_token_buffer: float = 0.5,
-        completion_threshold: float = 0.3,
+        completion_threshold: float = 0.8,
     ):
         # Environment variable defaults
         self.USERNAME = username
         self.PAT = pat
 
         self.CONTEXT_WINDOW = context_window
+        self.MAX_OUTPUT_TOKENS = max_ouput_tokens
 
         # Review settings
         self.REVIEW_MAX_FILE_IN_BATCH = review_max_file_in_batch
@@ -114,12 +131,14 @@ class GraphState(TypedDict):
 class DataFlowAgent:
     def __init__(
         self,
-        model: BaseChatModel,
+        categorization_model: BaseChatModel,
+        review_model: BaseChatModel,
         repo_url: str,
         directory: TemporaryDirectory,
         config: Config,
     ):
-        self.model = model
+        self.categorize_model = categorization_model
+        self.review_model = review_model
         self.repo_url = repo_url
         self.directory = directory
         self.uuid_to_numbered_mapping = {}  # {original UUID -> "uuid_X"}
@@ -331,24 +350,11 @@ class DataFlowAgent:
             logger.info("No files to categorize.")
             return state
 
-        class Result(BaseModel):
-            should_review: Set[File] = Field(
-                ..., description="List of files that must be reviewed."
-            )
-            could_review: Set[File] = Field(
-                ..., description="List of files that are optional to review."
-            )
-            should_not_review: Set[File] = Field(
-                ..., description="List of files that should not be reviewed."
-            )
-
         logger.info("Categorizing %d files.", len(files))
-
-        parser = PydanticOutputParser(pydantic_object=Result)
 
         system_prompt = SystemMessagePromptTemplate.from_template(
             """
-        You are an intelligent assistant tasked with categorizing a list of file paths from a source code repository to aid in creating a data flow diagram. Each file path should be classified into one of the following categories based on its relevance and its relationship to the provided Data Flow Report:
+        You are an Principal Software Architect tasked with categorizing a provided list of file paths from a source code repository to aid in creating a data flow diagram. Each file path should be classified into one of the following categories based on its relevance and its relationship to the provided Data Flow Report:
             1.	Should Review: Files that are highly relevant and likely contain critical information about external entities, processes, data stores and data flows directly involved in the system’s functionality. This includes the repository’s main README.md file, which often provides an overview of the project’s architecture and setup.
             2.	Could Review: Files that may provide supplementary or contextual information about the codebase but are not critical for constructing the data flow diagram. These files can be reviewed if time permits.
             3.	Should Not Review: Files that are unlikely to contain relevant information for the data flow diagram, such as auxiliary or unrelated files.
@@ -366,6 +372,12 @@ class DataFlowAgent:
             •	Contextual Importance: Does the file provide indirect support for understanding the system’s data flow or architecture (e.g., diagrams, high-level overviews)? Prioritize files that align with the entities and flows in the Data Flow Report.
             •	Redundancy: Mark files as Should Not Review that duplicate information already available in higher-priority files.
 
+        Categorization Process (To Avoid Hallucination)
+            1.	Only use the provided file list and do not infer missing files.
+            2.	Check if a file directly aligns with entities or processes in the Data Flow Report.
+            3.	Categorize conservatively—if uncertain, classify as Could Review instead of assuming importance.
+            4.	Do not create or assume extra files that are not in the input list.
+
         Examples of Categorization:
             •	Should Review:
                 •	README.md (main or highly relevant README files).
@@ -381,11 +393,7 @@ class DataFlowAgent:
                 •	static/styles.css
                 •	node_modules/package.json
                 •	README.md inside unrelated directories (e.g., node_modules/).
-
-        Format Instructions:
-        {format_instructions}
-        """,
-            partial_variables={"format_instructions": parser.get_format_instructions()},
+        """
         )
 
         user_prompt = HumanMessagePromptTemplate.from_template(
@@ -401,10 +409,10 @@ class DataFlowAgent:
 
         prompt = ChatPromptTemplate.from_messages([system_prompt, user_prompt])
 
-        max_context_tokens = self.config.CONTEXT_WINDOW
-        max_prompt_tokens = int(
-            max_context_tokens * self.config.CATEGORIZE_TOKEN_BUFFER
-        ) - self.model.get_num_tokens(prompt.format(file_paths=""))
+        available_tokens = self.config.CONTEXT_WINDOW - self.config.MAX_OUTPUT_TOKENS
+        available_tokens = available_tokens - self.categorize_model.get_num_tokens(
+            prompt.format(file_paths="")
+        )
 
         new_state = {
             "should_review": set(),
@@ -412,6 +420,32 @@ class DataFlowAgent:
             "should_not_review": set(),
         }
 
+        class Result(BaseModel):
+            should_review: List[File] = Field(
+                ..., description="List of files that must be reviewed."
+            )
+            could_review: List[File] = Field(
+                ..., description="List of files that are optional to review."
+            )
+            should_not_review: List[File] = Field(
+                ..., description="List of files that should not be reviewed."
+            )
+
+        chain = prompt | self.categorize_model.with_structured_output(schema=Result)
+
+        @retry(
+            retry=retry_if_exception(
+                lambda e: isinstance(e, httpx.HTTPStatusError)
+                and e.response.status_code == 429
+            ),
+            wait=wait_random_exponential(
+                min=1, max=60
+            ),  # Randomized exponential backoff: 1s → up to 60s
+            stop=stop_after_attempt(6),  # Retry up to 6 times
+            before_sleep=lambda retry_state: logger.warning(
+                f"⚠️ 429 Too Many Requests. Retrying in {retry_state.next_action.sleep:.1f} sec..."
+            ),
+        )
         async def process_batch(batch):
             if not batch:
                 return None  # Avoid processing empty batches
@@ -419,17 +453,11 @@ class DataFlowAgent:
             logger.debug("Processing batch with %d files.", len(batch))
             file_paths = [{"file_path": file_path} for file_path in batch]
 
-            chain = prompt | self.model.with_structured_output(Result)
-            try:
-                result = await chain.ainvoke(
-                    {
-                        "file_paths": json.dumps(file_paths),
-                    }
-                )
-                return result
-            except Exception as e:
-                logger.error("❌ Error processing batch: %s", e)
-                return None
+            return await chain.ainvoke(
+                {
+                    "file_paths": json.dumps(file_paths),
+                }
+            )
 
         async def aggregate_results(result):
             if result:  # Ensure a file is added to only one category
@@ -458,13 +486,13 @@ class DataFlowAgent:
         tasks = []
 
         for file in files:
-            token_count = self.model.get_num_tokens(
+            token_count = self.categorize_model.get_num_tokens(
                 file.file_path
             )  # allow for the justification
 
             if (
                 self.config.CATEGORIZE_MAX_FILE_IN_BATCH < len(batch)
-                or current_tokens + token_count > max_prompt_tokens
+                or current_tokens + token_count > available_tokens
             ):
                 if batch:  # Avoid submitting empty batch
                     tasks.append(process_batch(batch))
@@ -546,83 +574,139 @@ class DataFlowAgent:
         reviewed = state.get("reviewed", set())
         could_not_review = state.get("could_not_review", set())
 
+        # You are an expert Principal Software Architect with extensive experience in designing, analyzing, and documenting software systems. Your task is to Generate or Update a detailed Data Flow Report by analyzing the provided File Data and enhancing the existing Data Flow Report. This updated report will serve as a foundation for understanding and evolving the system architecture.
+
+        # Instructions:
+        #     1.	Incremental Enhancement:
+        #         •	Use the provided DataFlowReport as the foundation.
+        #         •	Review the new context to:
+        #             •	Add: Incorporate new external entities, processes, data flows, data stores, or trust boundaries identified in the context.
+        #             •	Update: Enhance existing components in the report with additional details or clarifications from the context.
+        #             •	Retain: Preserve any existing information in the report that is not explicitly contradicted or invalidated by the context.
+        #             •	Avoid Duplication: Ensure that new additions complement, rather than duplicate, existing information.
+        #             •	Ensure Trust Boundary Placement: Every External Entity, Process, and Data Store must be explicitly placed within a Trust Boundary.
+        #             •   Each component, External Entity, Process, Data Store, Data Flow and Trust Boundary, the report must contain a detailed compoenent description field that captures the following elements:
+        #                 •   Purpose (Why it exists in the system).
+        #                 •   Functionality (What it does and how it interacts with other components).
+        #                 •   Operational Details (How it processes, stores, or transfers data).
+        #                 •   Performance Aspects (Scalability, latency, or fault tolerance mechanisms).
+        #                 •   Dependencies (APIs, microservices, or third-party integrations it interacts with).
+        #                 •   Security Considerations:
+        #                     - **ONLY document security details that are explicitly stated in the provided data**.
+        #                     - **Do not assume security mechanisms (e.g., encryption, authentication) unless explicitly mentioned**.
+        #                     - **If security details are missing**, flag them as **Potential Security Gaps** and recommend best practices.
+        #     2. Identifying External Entities:
+        #         •   Definition: External Entities represent systems, users, services, or organizations that interact with the system but exist outside its control.
+        #         •   Identification Criteria:
+        #             •   Entities that provide input to or receive output from the system.
+        #             •   Components that exist outside the system’s direct management or control.
+        #             •   External services (e.g., third-party APIs, databases managed by external organizations, authentication providers).
+        #             •   Human users or roles that interface with the system (e.g., Administrators, End Users, Auditors).
+        #             •   Systems that the application communicates with but does not own (e.g., external monitoring tools, external data sources, partner integrations).
+        #     3.  Identifying Processes:
+        #         •   Definition: Processes represent operations or transformations that handle, manipulate, or move data within the system.
+        #         •   Identification Criteria:
+        #             •   Components that perform computations, validations, or transformations on data.
+        #             •   Internal system functions that act on input data and produce output data.
+        #             •   Automated workflows, business logic execution, and procedural operations within the system.
+        #             •   Services or microservices that process data within the system.
+        #     4. Identifying Data Stores:
+        #         •   Definition: Data Stores represent repositories where data is persistently stored within the system.
+        #         •   Identification Criteria:
+        #             •   Databases, file systems, or cloud storage services used for storing structured or unstructured data.
+        #             •   Caches, session stores, or logs used to maintain state or track historical actions.
+        #             •   Internal or external repositories that interact with system processes or external entities.
+        #             •   Data stores with distinct access controls, security policies, and retention policies.
+        #     5. Identifying Data Flows:
+        #         •	Definition: Data Flows represent the movement of data between External Entities, Processes, Data Stores, and Configuration Sources within the system.
+        #             •	Identification Criteria:
+        #             •	Any logical connection where data moves from one component to another.
+        #             •	Interfaces between system components, whether synchronous (e.g., API calls, direct connections) or asynchronous (e.g., messaging queues, event streams).
+        #             •	Data transfers across trust boundaries, highlighting potential security concerns.
+        #             •	Both automated and manual data exchanges within the system.
+        #             •	Implicit Data Exchanges: Identify data dependencies that do not involve direct data movement but still establish a data dependency, such as:
+        #                 •	Configuration and Environment Variables (e.g., .env files, system settings, API keys, environment parameters).
+        #                 •	Read-Only Data Access (e.g., a process retrieving system configurations at runtime without modifying them).
+        #                 •	Implicit Service Dependencies (e.g., a service dynamically loading credentials from a configuration manager).
+        #                 •	Static and Dynamic Data Interactions:
+        #             •	Static Data Access: When a component retrieves values from a configuration store, secret vault, or file-based settings.
+        #                 •	Dynamic Data Transfers: When a component sends or receives structured/unstructured data in motion (e.g., network communication, database queries).
+        #     6. Identifying Trust Boundaries:
+        #         •   Definition: Trust Boundaries represent security perimeters that define the separation of different levels of trust within a system.
+        #         •   Identification Criteria:
+        #             •   Boundaries where data moves between systems with different trust levels (e.g., between an internal application and an external API).
+        #             •   Security domains that enforce authentication, authorization, or encryption requirements.
+        #             •   Segmentation between internal and external networks, cloud and on-premise environments, or different user roles.
+        #             •   Points where compliance regulations require enhanced security measures.
+        #     7. Trust Boundary Enforcement
+        #         •	Ensure that every component (External Entity, Process, Data Store) is assigned to at least one Trust Boundary.
+        #         •	If a component is missing from a trust boundary, identify the most relevant boundary and associate it accordingly.
+        #         •	If a new trust boundary is needed based on the context, create and define it explicitly.
+        #         •	Ensure that components inside a trust boundary have consistent security constraints as per their assigned boundary.
+        #     8.	Dynamic Integration:
+        #         •	Compare the context and the existing DataFlowReport to determine:
+        #             •	What new information should be added.
+        #             •	What existing information should be clarified or expanded.
+        #             •	Maintain coherence and continuity in the report by integrating new details seamlessly.
+        system_content = """
+        You are an expert Principal Software Architect with extensive experience in designing, analyzing, and documenting software systems. Your task is to Generate or Update a detailed Data Flow Report by analyzing the provided File Data and building upon the existing DataFlowReport. This updated report will serve as a foundation for understanding and evolving the system architecture.
+
+        Instructions
+           	1.	Incremental Enhancement
+                •	Use the existing DataFlowReport as your baseline.
+                •	Add new entities, processes, data flows, data stores, or trust boundaries found in the new context.
+                •	Update existing components with additional or clarified details.
+                •	Retain existing information unless contradicted.
+                •	Avoid duplication: Integrate new info seamlessly.
+                •	Ensure every External Entity, Process, and Data Store is within at least one Trust Boundary.
+            2.	Detailed Component Descriptions
+            For every External Entity, Process, Data Store, Data Flow, and Trust Boundary, provide:
+                •	Purpose (why it exists)
+                •	Functionality (what it does, how it interacts)
+                •	Operational Details (how it processes, stores, or transfers data)
+                •	Performance Aspects (scalability, latency, fault tolerance)
+                •	Dependencies (APIs, microservices, or third-party integrations)
+                •	Security Considerations
+                    •	Only include explicit security details from the source
+                    •	If security mechanisms are missing, mark as Potential Security Gaps and recommend best practices
+            3.	Identifying External Entities
+                •	Represent systems, users, services, or organizations outside direct system control.
+                •	Include input/output sources, third-party APIs, external organizations, human users, partner integrations, etc.
+            4.	Identifying Processes
+                •	Represent operations or transformations that handle, manipulate, or move data (e.g., computation, validation, business logic).
+            5.	Identifying Data Stores
+                •	Represent repositories where data is persistently stored (e.g., databases, file systems, caches, logs).
+            6.	Identifying Data Flows
+                •	Represent movement of data between External Entities, Processes, Data Stores, and Configuration Sources.
+                •	Capture any logical connection (synchronous/asynchronous) or manual exchange of data.
+                •	Document implicit data exchanges (e.g., reading config files, loading environment variables) as well as dynamic data transfers.
+            7.	Identifying Trust Boundaries
+                •	Represent security perimeters separating different trust levels (e.g., internal vs. external).
+                •	Enforce correct placement of all components under appropriate trust boundaries.
+            8.	Trust Boundary Enforcement
+                •	Ensure all components are in at least one trust boundary.
+                •	Create or adjust boundaries as needed; maintain consistent security constraints.
+            9.	Dynamic Integration
+                •	Compare new context with the existing DataFlowReport.
+	            •	Incorporate or clarify additional information.
+	            •	Preserve coherence and continuity in the final report.
+
+        Format Instructions:
+        {format_instructions}
+        """
         parser = JsonOutputParser(pydantic_object=AgentDataFlowReport)
 
         system_template = SystemMessagePromptTemplate.from_template(
-            """
-        You are an expert Principal Software Architect with extensive experience in designing, analyzing, and documenting software systems. Your task is to Generate or Update a detailed Data Flow Report by analyzing the provided File Data and enhancing the existing Data Flow Report. This updated report will serve as a foundation for understanding and evolving the system architecture.
-        
-        Instructions:
-            1.	Incremental Enhancement:
-                •	Use the provided DataFlowReport as the foundation.
-                •	Review the new context to:
-                    •	Add: Incorporate new external entities, processes, data flows, data stores, or trust boundaries identified in the context.
-                    •	Update: Enhance existing components in the report with additional details or clarifications from the context.
-                    •	Retain: Preserve any existing information in the report that is not explicitly contradicted or invalidated by the context.
-                    •	Avoid Duplication: Ensure that new additions complement, rather than duplicate, existing information.
-                    •	Ensure Trust Boundary Placement: Every External Entity, Process, and Data Store must be explicitly placed within a Trust Boundary.
-                    •   Each component, External Entity, Process, Data Store, Data Flow and Trust Boundary, the report must contain a detailed compoenent description field that captures the following elements:
-                        •   Purpose (Why it exists in the system).
-                        •   Functionality (What it does and how it interacts with other components).
-                        •   Operational Details (How it processes, stores, or transfers data).
-                        •   Performance Aspects (Scalability, latency, or fault tolerance mechanisms).
-                        •   Dependencies (APIs, microservices, or third-party integrations it interacts with).
-                        •   Security Considerations:
-                            - **ONLY document security details that are explicitly stated in the provided data**.
-                            - **Do not assume security mechanisms (e.g., encryption, authentication) unless explicitly mentioned**.
-                            - **If security details are missing**, flag them as **Potential Security Gaps** and recommend best practices.
-            2. Identifying External Entities:
-                •   Definition: External Entities represent systems, users, services, or organizations that interact with the system but exist outside its control.
-                •   Identification Criteria:
-                    •   Entities that provide input to or receive output from the system.
-                    •   Components that exist outside the system’s direct management or control.
-                    •   External services (e.g., third-party APIs, databases managed by external organizations, authentication providers).
-                    •   Human users or roles that interface with the system (e.g., Administrators, End Users, Auditors).
-                    •   Systems that the application communicates with but does not own (e.g., external monitoring tools, external data sources, partner integrations).
-            3.  Identifying Processes:
-                •   Definition: Processes represent operations or transformations that handle, manipulate, or move data within the system.
-                •   Identification Criteria:
-                    •   Components that perform computations, validations, or transformations on data.
-                    •   Internal system functions that act on input data and produce output data.
-                    •   Automated workflows, business logic execution, and procedural operations within the system.
-                    •   Services or microservices that process data within the system.
-            4. Identifying Data Stores:
-                •   Definition: Data Stores represent repositories where data is persistently stored within the system.
-                •   Identification Criteria:
-                    •   Databases, file systems, or cloud storage services used for storing structured or unstructured data.
-                    •   Caches, session stores, or logs used to maintain state or track historical actions.
-                    •   Internal or external repositories that interact with system processes or external entities.
-                    •   Data stores with distinct access controls, security policies, and retention policies.
-            5. Identifying Data Flows:
-                •   Definition: Data Flows represent the movement of data between External Entities, Processes, and Data Stores within the system.
-                •   Identification Criteria:
-                    •   Any logical connection where data moves from one component to another.
-                    •   Interfaces between system components, whether synchronous (e.g., API calls, direct connections) or asynchronous (e.g., messaging queues, event streams).
-                    •   Data transfers between trust boundaries, highlighting potential security concerns.
-                    •   Both automated and manual data exchanges within the system
-            6. Identifying Trust Boundaries:
-                •   Definition: Trust Boundaries represent security perimeters that define the separation of different levels of trust within a system.
-                •   Identification Criteria:
-                    •   Boundaries where data moves between systems with different trust levels (e.g., between an internal application and an external API).
-                    •   Security domains that enforce authentication, authorization, or encryption requirements.
-                    •   Segmentation between internal and external networks, cloud and on-premise environments, or different user roles.
-                    •   Points where compliance regulations require enhanced security measures.
-            7. Trust Boundary Enforcement
-                •	Ensure that every component (External Entity, Process, Data Store) is assigned to at least one Trust Boundary.
-                •	If a component is missing from a trust boundary, identify the most relevant boundary and associate it accordingly.
-                •	If a new trust boundary is needed based on the context, create and define it explicitly.
-                •	Ensure that components inside a trust boundary have consistent security constraints as per their assigned boundary.
-            8.	Dynamic Integration:
-	            •	Compare the context and the existing DataFlowReport to determine:
-                    •	What new information should be added.
-                    •	What existing information should be clarified or expanded.
-                    •	Maintain coherence and continuity in the report by integrating new details seamlessly.
-        
-        Format Instructions:
-        {format_instructions}
-        """,
+            system_content,
             partial_variables={"format_instructions": parser.get_format_instructions()},
         )
+        if is_o1_mini(self.review_model):
+            system_template = AIMessagePromptTemplate.from_template(
+                system_content,
+                partial_variables={
+                    "format_instructions": parser.get_format_instructions()
+                },
+            )
 
         user_template = HumanMessagePromptTemplate.from_template(
             """Data Flow Report:
@@ -635,11 +719,50 @@ class DataFlowAgent:
 
         prompt = ChatPromptTemplate.from_messages([system_template, user_template])
 
-        max_context_tokens = self.config.CONTEXT_WINDOW
-        max_prompt_tokens = int(
-            max_context_tokens * self.config.REVIEW_MAX_FILE_IN_BATCH
-        ) - self.model.get_num_tokens(prompt.format(file_data="", data_flow_report=""))
+        max_prompt_tokens = (
+            self.config.CONTEXT_WINDOW
+            - self.config.MAX_OUTPUT_TOKENS
+            - self.review_model.get_num_tokens(
+                prompt.format(file_data="", data_flow_report="")
+            )
+        )
 
+        chain = prompt | self.review_model.with_structured_output(
+            schema=AgentDataFlowReport.model_json_schema()
+        )
+
+        if is_o1_mini(self.review_model):
+            chain = prompt | self.review_model
+
+        # Define retry logic for synchronous `invoke()` method
+        @retry(
+            retry=retry_if_exception(
+                lambda e: isinstance(e, httpx.HTTPStatusError)
+                and e.response.status_code == 429
+            ),
+            wait=wait_random_exponential(min=1, max=60),
+            stop=stop_after_attempt(6),
+            before_sleep=lambda retry_state: logger.warning(
+                f"⚠️ 429 Too Many Requests. Retrying in {retry_state.next_action.sleep:.1f} sec..."
+            ),
+        )
+        def invoke_with_retry(chain, batch, report_json):
+            """Retries `chain.invoke()` only on 429 errors."""
+
+            result = chain.invoke(
+                {"file_data": json.dumps(batch), "data_flow_report": report_json}
+            )
+
+            if is_o1_mini(self.review_model):
+                cleaned_json_string = re.sub(
+                    r"```json\n|\n```", "", result.content
+                ).strip()
+                result = parser.parse(cleaned_json_string)
+
+            return result
+
+        number_of_files = len(files)
+        current_number_of_files = 0
         while files:
 
             report = state.get(
@@ -650,14 +773,13 @@ class DataFlowAgent:
 
             batch = []
             total_tokens_used = 0
-            remaining_tokens = max_prompt_tokens - self.model.get_num_tokens(
-                report_json
-            )
+            report_tokens = self.review_model.get_num_tokens(report_json)
+            remaining_tokens = max_prompt_tokens - report_tokens
 
             text_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=remaining_tokens // 2,
                 chunk_overlap=remaining_tokens // 10,
-                length_function=self.model.get_num_tokens,
+                length_function=self.review_model.get_num_tokens,
             )
 
             files_in_batch = 0
@@ -683,7 +805,7 @@ class DataFlowAgent:
                     file_metadata_json = json.dumps(file_metadata)
 
                     # Get the number of tokens
-                    file_tokens = self.model.get_num_tokens(file_metadata_json)
+                    file_tokens = self.review_model.get_num_tokens(file_metadata_json)
 
                     if file_tokens >= max_prompt_tokens:
                         justification = f"File {relative_path} is too large to process in a single batch. Skipping."
@@ -700,9 +822,9 @@ class DataFlowAgent:
                         file_chunks = [file_metadata_json]
 
                     for chunk in file_chunks:
-                        chunk_tokens = self.model.get_num_tokens(chunk)
+                        chunk_tokens = self.review_model.get_num_tokens(chunk)
 
-                        if chunk_tokens >= max_prompt_tokens:
+                        if chunk_tokens >= remaining_tokens:
                             justification = f"Chunk from {relative_path} is too large to process. Skipping."
                             logging.warning(f"⚠️ {justification}")
                             could_not_review.add(
@@ -713,7 +835,7 @@ class DataFlowAgent:
                             continue
 
                         # Stop adding more chunks when reaching the max token limit
-                        if total_tokens_used + chunk_tokens >= max_prompt_tokens:
+                        if total_tokens_used + chunk_tokens >= remaining_tokens:
                             logging.info("Context window full, processing batch.")
                             break  # Stop adding more chunks, process the batch
 
@@ -723,6 +845,8 @@ class DataFlowAgent:
                         total_tokens_used += chunk_tokens
 
                     reviewed.add(current_file)  # Mark file as reviewed
+
+                    current_number_of_files += 1
 
                 except Exception as e:
                     logging.error(
@@ -736,19 +860,10 @@ class DataFlowAgent:
 
             try:
 
-                chain = prompt | self.model.with_structured_output(
-                    schema=AgentDataFlowReport.model_json_schema()
-                )
-
-                report = chain.invoke(
-                    input={
-                        "file_data": json.dumps(batch),
-                        "data_flow_report": report_json,
-                    }
-                )
+                report = invoke_with_retry(chain, batch, report_json)
 
                 logging.info(
-                    f"Processed batch successfully with {total_tokens_used} tokens."
+                    f"Processed {current_number_of_files}/{number_of_files} files successfully."
                 )
 
             except Exception as e:
@@ -759,19 +874,12 @@ class DataFlowAgent:
             state["could_not_review"] = could_not_review
             state["should_review"] = files
 
-            logging.info(
-                "Batch completed. Remaining files will be processed in the next batch."
-            )
-
         logger.info("✅ Finished file review process.")
         logger.info(self.get_report_stats(state))
 
         return state
 
     def done_reviewing(self, state) -> bool:
-        """
-        Determines whether there are more items to review based on the 80/20 rule.
-        """
 
         # Count different categories
         count_should = len(state.get("should_review", set()))

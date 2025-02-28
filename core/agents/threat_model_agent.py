@@ -81,7 +81,7 @@ class ThreatModelAgent:
         Perform a comprehensive STRIDE-based threat analysis on the provided **Component**. Evaluate the Component with the provided context of Asset data and DataFlowReport.
 
         Additional Instructions:
-            - If a single threat scenario plausibly fits multiple STRIDE categories (e.g., both Tampering and Repudiation), please list it under **each** relevant category or explicitly note all categories it applies to. Do not omit secondary categories just to avoid duplication.
+            - If a single threat scenario plausibly fits multiple STRIDE categories (e.g., both Tampering and Repudiation), create a separate threat entry for each category instead of listing multiple categories in a single entry.
             - Use concrete examples from the Asset and AgentDataFlowReport (e.g., naming specific Processes, DataFlows, or DataStores) to illustrate how each threat might apply in practice
             - For each STRIDE category (Spoofing, Tampering, Repudiation, Information Disclosure, DoS, EoP), list multiple realistic threats if applicable—do **not** limit to just one.
 
@@ -135,9 +135,6 @@ class ThreatModelAgent:
                 •	Security Controls & Enforcement
                     •	Identify existing protective measures at each boundary (firewalls, proxies, gateways, etc.) and gauge effectiveness against DoS or EoP attacks.
                     •	Suggest additional or improved controls where weaknesses are found.
-
-        Format Instructions:
-        {format_instructions}
         """,
             partial_variables={"format_instructions": parser.get_format_instructions()},
         )
@@ -337,18 +334,18 @@ class ThreatModelAgent:
             •	Impact Level & Risk Rating: Select the highest level from the merged threats.
             •	Mitigations: Aggregate all mitigation steps into a single actionable list.
 
-        Example Input: Threats to Evaluate for Merging
+        Example Input:
         ```json
         {input_example}
         ```
 
-        Expected Output:
-        1. Merge Similar Repudiation Threats (They Address the Same Issue)
+        Example Output:
+        1. Merge Similar Threats (They Address the Same Issue)
             ```json
             {output_example_1}
             ```
 
-        2. Do NOT Merge DoS Threats (Different Attack Methods & Targets)
+        2. Do NOT Merge Threats (Different Attack Methods & Targets)
             •	“Denial of Service via API Flooding” and “Denial of Service via Database Overload” should NOT be merged because they involve different attack vectors and affected components.
 
             They remain separate threats, but clearly defined:

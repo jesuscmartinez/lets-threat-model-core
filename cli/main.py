@@ -68,6 +68,10 @@ async def main(yaml_file: str, output_file: str):
     # Generate report in Markdown format
     markdown_report = generate_threat_model_report(threat_model)
 
+    markdown_report = (
+        markdown_report + "\n\n---\n" + threat_model.model_dump_json(indent=4)
+    )
+
     # Save to a Markdown file
     with open(output_file, "w") as md_file:
         md_file.write(markdown_report)

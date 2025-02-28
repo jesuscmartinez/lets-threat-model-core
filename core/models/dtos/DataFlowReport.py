@@ -44,7 +44,7 @@ class DataFlow(Component):
     )
     direction: str = Field(
         ...,
-        description="Indicates whether the flow is incoming, outgoing, or bidirectional relative to the source.",
+        description="Indicates whether the flow is a read, incoming, outgoing, write or bidirectional relative to the source.",
     )
 
     def __hash__(self):
