@@ -6,8 +6,10 @@ from typing import Any
 import uuid
 from langchain_core.prompts import (
     SystemMessagePromptTemplate,
-    AIMessagePromptTemplate,
+    HumanMessagePromptTemplate,
+    ChatPromptTemplate,
 )
+from core.agents.chat_model_manager import ChatModelManager
 from langchain.chat_models.base import BaseChatModel
 from langchain_core.runnables import Runnable
 from pydantic import BaseModel
@@ -23,6 +25,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "")
+STRUCTURED_OUPUT_AGENT_LLM = os.getenv("STRUCTURED_OUPUT_AGENT_LLM", "")
+
 
 class AgentHelper:
 
@@ -31,7 +36,7 @@ class AgentHelper:
         self.numbered_to_uuid_mapping = {}  # {"uuid_X" -> original or new UUID}
         self.counter = 1  # Counter for "uuid_X" generation
 
-    def convert_uuids_to_numbered_ids(self, data_flow_report: dict) -> dict:
+    def convert_uuids_to_ids(self, data_flow_report: dict) -> dict:
         """
         Replaces all UUIDs in 'id', '_id', and '_ids' fields with numbered placeholders ('uuid_1', 'uuid_2', etc.)
         and stores the mapping for restoration.
@@ -102,7 +107,7 @@ class AgentHelper:
         logger.debug("Finished UUID to numbered ID conversion")
         return data_flow_report
 
-    def convert_numbered_ids_to_uuids(self, data_flow_report: dict) -> dict:
+    def convert_ids_to_uuids(self, data_flow_report: dict) -> dict:
         """
         Converts all 'id' placeholders (e.g., 'uuid_1') back to their original UUIDs if known.
         If the placeholder is not found in self.numbered_to_uuid_mapping, a new UUID is generated
@@ -202,9 +207,8 @@ def get_model_name(model: BaseChatModel):
     return "Unknown Model"
 
 
-def is_o1_mini(model: BaseChatModel):
-    reasoning = False
+def is_o1(model: BaseChatModel):
     if get_model_name(model).lower().startswith(("o1-")):
-        reasoning = True
+        return True
 
-    return reasoning
+    return False

@@ -2,13 +2,18 @@ import argparse
 import asyncio
 import logging
 import os
-import yaml
 from uuid import uuid4
+from pathlib import Path
+import yaml
+from pydantic import SecretStr
 from dotenv import load_dotenv
+
+# Import Models and Services
 from core.models.dtos.ThreatModel import ThreatModel
 from core.models.enums import AuthnType, DataClassification
 from core.models.dtos.Asset import Asset
 from core.models.dtos.Repository import Repository
+from core.services.threat_model_config import ThreatModelConfig
 from core.services.threat_model_services import generate_threat_model
 from core.services.reports import generate_threat_model_report
 
@@ -16,68 +21,120 @@ from core.services.reports import generate_threat_model_report
 load_dotenv()
 
 # Configure logging
-log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
-    level=log_level,
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
+# Load secrets
+GITHUB_USERNAME = os.getenv("GITHUB_USERNAME", "")
+GITHUB_PAT = SecretStr(os.getenv("GITHUB_PAT", ""))
 
-def parse_yaml(yaml_file: str):
-    """Parses a YAML file and returns asset and repository data."""
-    try:
-        with open(yaml_file, "r") as file:
-            data = yaml.safe_load(file)
 
-        # Extract Asset Data
-        asset_data = data.get("asset", {})
-        asset = Asset(
+def load_yaml_config(file_path: str) -> dict:
+    """Loads a YAML configuration file into a dictionary."""
+    path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError(f"❌ Config file not found: {file_path}")
+
+    with path.open("r") as file:
+        return yaml.safe_load(file)
+
+
+def parse_asset(data: dict) -> Asset:
+    """Parses asset information from YAML data."""
+    return Asset(
+        id=uuid4(),
+        name=data.get("name", "Unnamed Asset"),
+        description=data.get("description", "No description provided"),
+        internet_facing=data.get("internet_facing", False),
+        authn_type=AuthnType[data.get("authn_type", "NONE").upper()],
+        data_classification=DataClassification[
+            data.get("data_classification", "PUBLIC").upper()
+        ],
+    )
+
+
+def parse_repositories(data: list, asset_id: uuid4) -> list[Repository]:
+    """Parses repository information from YAML data."""
+    return [
+        Repository(
             id=uuid4(),
-            name=asset_data.get("name", "Unnamed Asset"),
-            description=asset_data.get("description", "No description provided"),
-            internet_facing=asset_data.get("internet_facing", False),
-            authn_type=AuthnType[asset_data.get("authn_type", "NONE").upper()],
-            data_classification=DataClassification[
-                asset_data.get("data_classification", "PUBLIC").upper()
-            ],
+            name=repo.get("name", "Unnamed Repository"),
+            url=repo.get("url", "N/A"),
+            asset_id=asset_id,
         )
+        for repo in data
+    ]
 
-        # Extract Repositories Data
-        repos = [
-            Repository(
-                id=uuid4(),
-                name=repo.get("name", "Unnamed Repository"),
-                url=repo.get("url", "N/A"),
-                asset_id=asset.id,
-            )
-            for repo in data.get("repositories", [])
-        ]
 
-        return asset, repos
-    except Exception as e:
-        logger.error(f"Error parsing YAML file: {e}")
-        exit(1)
+def build_threat_model_config(
+    config_data: dict, exclude_patterns: list
+) -> ThreatModelConfig:
+    """Creates a ThreatModelConfig instance from YAML data and environment variables."""
+    config_settings = {
+        "llm_provider": config_data.get("llm_provider", "openai"),
+        "categorization_agent_llm": config_data.get(
+            "categorization_agent_llm", "gpt-4o-mini"
+        ),
+        "review_agent_llm": config_data.get("review_agent_llm", "gpt-4o-mini"),
+        "threat_model_agent_llm": config_data.get(
+            "threat_model_agent_llm", "gpt-4o-mini"
+        ),
+        "report_agent_llm": config_data.get("report_agent_llm", "gpt-4o-mini"),
+        "context_window": config_data.get("context_window", 128000),
+        "max_output_tokens": config_data.get("max_output_tokens", 16384),
+        "review_max_file_in_batch": config_data.get("review_max_file_in_batch", 3),
+        "review_token_buffer": config_data.get("review_token_buffer", 0.5),
+        "categorize_max_file_in_batch": config_data.get(
+            "categorize_max_file_in_batch", 30
+        ),
+        "categorize_token_buffer": config_data.get("categorize_token_buffer", 0.5),
+        "categorize_only": config_data.get("categorize_only", False),
+        "completion_threshold": config_data.get("completion_threshold", 0.8),
+        "username": GITHUB_USERNAME,
+        "pat": GITHUB_PAT,
+    }
+
+    # Remove None values
+    config_settings = {k: v for k, v in config_settings.items() if v is not None}
+
+    config = ThreatModelConfig(**config_settings)
+    config.add_exclude_patterns(exclude_patterns)
+    return config
 
 
 async def main(yaml_file: str, output_file: str):
     """Loads asset and repositories from YAML and generates a threat model report in Markdown format."""
-    asset, repos = parse_yaml(yaml_file)
-    threat_model: ThreatModel = await generate_threat_model(asset, repos)
+    try:
+        config = load_yaml_config(yaml_file)
+        asset = parse_asset(config.get("asset", {}))
+        repositories = parse_repositories(config.get("repositories", []), asset.id)
+        threat_model_config = build_threat_model_config(
+            config.get("config", {}), config.get("exclude_patterns", [])
+        )
 
-    # Generate report in Markdown format
-    markdown_report = generate_threat_model_report(threat_model)
+        # Generate threat model
+        threat_model: ThreatModel = await generate_threat_model(
+            asset, repositories, threat_model_config
+        )
 
-    markdown_report = (
-        markdown_report + "\n\n---\n" + threat_model.model_dump_json(indent=4)
-    )
+        logger.debug(
+            f"⚙️ Threat Model Configuration:\n{threat_model_config.model_dump_json(indent=4)}"
+            f"\n\n📝 Generated Threat Model:\n{threat_model.model_dump_json(indent=4)}"
+        )
 
-    # Save to a Markdown file
-    with open(output_file, "w") as md_file:
-        md_file.write(markdown_report)
+        # Generate and save the report
+        markdown_report = generate_threat_model_report(threat_model)
 
-    logger.info(f"✅ Threat model report generated: {output_file}")
-    print(f"📄 Report saved to: {output_file}")
+        output_path = Path(output_file)
+        output_path.write_text(markdown_report)
+
+        logger.info(f"✅ Threat model report generated and saved to: {output_path}")
+
+    except Exception as e:
+        logger.error(f"❌ Error generating threat model: {e}", exc_info=True)
 
 
 if __name__ == "__main__":
@@ -94,7 +151,7 @@ if __name__ == "__main__":
         "--output",
         type=str,
         default="threat_model_report.md",
-        help="Output Markdown file (default: threat_model_report.md)",
+        help="Output Markdown file",
     )
     args = parser.parse_args()
 

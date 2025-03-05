@@ -1,15 +1,12 @@
+from ast import mod
 import os
-import re
 from dotenv import load_dotenv
 import logging
 from langchain.chat_models import init_chat_model
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_core.language_models.chat_models import BaseChatModel
 from typing import Optional
-from openai import base_url
 from pydantic import SecretStr
-from regex import D
-
 
 # Load environment variables
 load_dotenv()
@@ -37,7 +34,10 @@ class ChatModelManager:
         provider: str,
         model: str,
         api_key: Optional[SecretStr] = None,
+        top_p: float = 0.8,
         temperature: float = 0.0,
+        frequency_penalty=0.1,
+        presence_penalty=0.05,
         rate_limiter: Optional[InMemoryRateLimiter] = rate_limiter,
     ) -> BaseChatModel:
         """
@@ -59,6 +59,9 @@ class ChatModelManager:
                 "model_provider": provider,
                 "model": model,
                 "temperature": temperature,
+                "top_p": top_p,
+                "frequency_penalty": frequency_penalty,
+                "presence_penalty": presence_penalty,
                 "rate_limiter": rate_limiter,
             }
             if provider.lower() == "anthropic":
@@ -68,8 +71,10 @@ class ChatModelManager:
                 api_key = api_key or SecretStr(os.getenv("OPENAI_API_KEY", ""))
                 init_kwargs["api_key"] = api_key
 
-                # these models are not supported due to OpenAI API limitations with structured output
                 if model.lower().startswith("o1-"):
+                    del init_kwargs["top_p"]
+                    del init_kwargs["frequency_penalty"]
+                    del init_kwargs["presence_penalty"]
                     del init_kwargs[
                         "temperature"
                     ]  # OpenAI reasoning models don't support temperature for now
