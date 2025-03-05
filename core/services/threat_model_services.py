@@ -1,5 +1,8 @@
-from pydantic import SecretStr
-from core.agents.repo_data_flow_agent import DataFlowAgent, Config
+from re import L, S
+from pydantic import Field, SecretStr
+from core.agents import threat_model_agent
+from core.agents.repo_data_flow_agent import DataFlowAgent
+from core.agents.repo_data_flow_agent_config import RepoDataFlowAgentConfig
 from core.agents.threat_model_agent import ThreatModelAgent
 from core.models.dtos.Asset import Asset
 from core.models.dtos.ThreatModel import ThreatModel
@@ -16,8 +19,10 @@ import logging
 import os
 import uuid
 from tempfile import TemporaryDirectory
-from typing import Tuple, List
+from typing import Any, Dict, Optional, Tuple, List
 import asyncio
+
+from core.services.threat_model_config import ThreatModelConfig
 
 
 # Configure logging
@@ -28,34 +33,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "")
-CATEGRORIZATION_AGENT_LLM = os.getenv("CATEGRORIZATION_AGENT_LLM", "")
-REVIEW_AGENT_LLM = os.getenv("REVIEW_AGENT_LLM", "")
-THREAT_MODEL_AGENT_LLM = os.getenv("THREAT_MODEL_AGENT_LLM", "")
-REPORT_AGENT_LLM = os.getenv("REPORT_AGENT_LLM", "")
 
-CONTEXT_WINDOW = int(os.getenv("CONTEXT_WINDOW", 0))
-USERNAME = os.getenv("USERNAME")
-PAT = SecretStr(os.getenv("PAT", ""))
-
-
-async def generate_threat_model(asset: Asset, repos: List[Repository]) -> ThreatModel:
+async def generate_threat_model(
+    asset: Asset, repos: List[Repository], config: ThreatModelConfig
+) -> ThreatModel:
 
     # Generate data flow reports concurrently
     data_flow_reports = await asyncio.gather(
-        *(generate_data_flow(repo) for repo in repos)
+        *(generate_data_flow(repo, config) for repo in repos)
     )
 
-    # # Generate threats concurrently
-    # threat_lists = await asyncio.gather(
-    #     *(generate_threats(asset, report) for report in data_flow_reports)
-    # )
+    # Generate threats concurrently
+    threat_lists = await asyncio.gather(
+        *(generate_threats(asset, report, config) for report in data_flow_reports)
+    )
 
-    # # Flatten the list of threats
-    # all_threats = [
-    #     threat for report_threats in threat_lists for threat in report_threats
-    # ]
-    all_threats = []
+    # Flatten the list of threats
+    all_threats = [
+        threat for report_threats in threat_lists for threat in report_threats
+    ]
 
     diagrams = [generate_mermaid_from_dataflow(report) for report in data_flow_reports]
 
@@ -74,14 +70,16 @@ async def generate_threat_model(asset: Asset, repos: List[Repository]) -> Threat
         threats=all_threats,
     )
 
-    threat_model_data = await generate_threat_model_data(threat_model)
+    threat_model_data = await generate_threat_model_data(threat_model, config)
     threat_model.name = threat_model_data["title"]
     threat_model.summary = threat_model_data["summary"]
 
     return threat_model
 
 
-async def generate_data_flow(repository: Repository):
+async def generate_data_flow(
+    repository: Repository, config: ThreatModelConfig
+) -> DataFlowReport:
     """Generates a DataFlowReport for a given repository."""
     try:
         logger.info(
@@ -91,17 +89,18 @@ async def generate_data_flow(repository: Repository):
         with TemporaryDirectory() as temp_dir:
             logger.info(f"📂 Created temporary directory: {temp_dir}")
 
-            # Initialize AI-based DataFlowAgent
             data_flow_agent = DataFlowAgent(
                 categorization_model=ChatModelManager.get_model(
-                    provider=LLM_PROVIDER, model=CATEGRORIZATION_AGENT_LLM
+                    provider=config.llm_provider, model=config.categorization_agent_llm
                 ),
                 review_model=ChatModelManager.get_model(
-                    provider=LLM_PROVIDER, model=REVIEW_AGENT_LLM
+                    provider=config.llm_provider, model=config.report_agent_llm
                 ),
                 repo_url=repository.url,
                 directory=temp_dir,
-                config=Config(username=USERNAME, pat=PAT),
+                username=config.username,
+                password=config.pat,
+                config=config,
             )
 
             state = {
@@ -142,7 +141,7 @@ async def generate_data_flow(repository: Repository):
 
 
 async def generate_threats(
-    asset: Asset, data_flow_report: DataFlowReport
+    asset: Asset, data_flow_report: DataFlowReport, config: ThreatModelConfig
 ) -> List[Threat]:
     """Generates threats for a given data flow report."""
     logger.info(
@@ -151,7 +150,7 @@ async def generate_threats(
     try:
         threat_model_agent = ThreatModelAgent(
             model=ChatModelManager.get_model(
-                provider=LLM_PROVIDER, model=THREAT_MODEL_AGENT_LLM
+                provider=config.llm_provider, model=config.threat_model_agent_llm
             )
         )
 
@@ -190,14 +189,16 @@ async def generate_threats(
         raise
 
 
-async def generate_threat_model_data(threat_model: ThreatModel) -> dict:
+async def generate_threat_model_data(
+    threat_model: ThreatModel, config: ThreatModelConfig
+) -> dict:
     logger.info(
         f"🚀 Starting threats model data generation for threat model: {threat_model.id})"
     )
     try:
         threat_model_data_agent = ThreatModelDataAgent(
             model=ChatModelManager.get_model(
-                provider=LLM_PROVIDER, model=REPORT_AGENT_LLM
+                provider=config.llm_provider, model=config.report_agent_llm
             )
         )
 
