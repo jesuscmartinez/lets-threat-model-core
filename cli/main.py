@@ -120,12 +120,13 @@ async def main(yaml_file: str, output_file: str):
             asset, repositories, threat_model_config
         )
 
+        logger.debug(
+            f"⚙️ Threat Model Configuration:\n{threat_model_config.model_dump_json(indent=4)}"
+            f"\n\n📝 Generated Threat Model:\n{threat_model.model_dump_json(indent=4)}"
+        )
+
         # Generate and save the report
         markdown_report = generate_threat_model_report(threat_model)
-        markdown_report += (
-            f"\n\n---DEBUG INFO:\n{threat_model_config.model_dump_json(indent=4)}"
-        )
-        markdown_report += threat_model.model_dump_json(indent=4)
 
         output_path = Path(output_file)
         output_path.write_text(markdown_report)
