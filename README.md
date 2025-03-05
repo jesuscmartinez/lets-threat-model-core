@@ -78,32 +78,40 @@ config:
   threat_model_agent_llm: "o1-mini" # reasoning task of assessing Data Flow Report and identifing Threats
   report_agent_llm: "gpt-4o-mini" # simple task to help generate report text
 ```
-Field Descriptions
-	•	asset: Details of the asset to be analyzed. ￼
-    •	name: Name of the asset.
-    •	description: Brief description of the asset.
-    •	internet_facing: Indicates if the asset is exposed to the internet (true or false).
-    •	authn_type: Authentication type used by the asset (e.g., NONE, BASIC, OAUTH).
-    •	data_classification: Classification of data handled by the asset (e.g., PUBLIC, INTERNAL, CONFIDENTIAL).
-	•	repositories: List of repositories associated with the asset.
-    •	name: Name of the repository.
-    •	url: URL of the repository.
-	•	config: Configuration settings for the threat modeling process. ￼
-    •	llm_provider: Provider of the language model (e.g., openai).
-    •	categorization_agent_llm: Language model used for categorization.
-    •	review_agent_llm: Language model used for review.
-    •	threat_model_agent_llm: Language model used for threat modeling.
-    •	report_agent_llm: Language model used for report generation.
-    •	context_window: Context window size for the language model.
-    •	max_output_tokens: Maximum number of tokens for the output.
-    •	review_max_file_in_batch: Maximum number of files to review in a batch.
-    •	review_token_buffer: Token buffer ratio for review.
-    •	categorize_max_file_in_batch: Maximum number of files to categorize in a batch.
-    •	categorize_token_buffer: Token buffer ratio for categorization.
-    •	categorize_only: Flag to indicate if only categorization should be performed (true or false).
-    •	completion_threshold: Threshold for completion.
-  •	exclude_patterns: List of file patterns to exclude from analysis.
-  •	include_patterns: List of file patterns to include in the analysis.
+## Field Descriptions
+
+### Asset
+- **asset**: Details of the asset to be analyzed.
+  - **name**: Name of the asset.
+  - **description**: Brief description of the asset.
+  - **internet_facing**: Indicates if the asset is exposed to the internet (`true` or `false`).
+  - **authn_type**: Authentication type used by the asset (e.g., `NONE`, `BASIC`, `OAUTH`).
+  - **data_classification**: Classification of data handled by the asset (e.g., `PUBLIC`, `INTERNAL`, `CONFIDENTIAL`).
+
+### Repositories
+- **repositories**: List of repositories associated with the asset.
+  - **name**: Name of the repository.
+  - **url**: URL of the repository.
+
+### Configuration
+- **config**: Configuration settings for the threat modeling process.
+  - **llm_provider**: Provider of the language model (e.g., `openai`).
+  - **categorization_agent_llm**: Language model used for categorization.
+  - **review_agent_llm**: Language model used for review.
+  - **threat_model_agent_llm**: Language model used for threat modeling.
+  - **report_agent_llm**: Language model used for report generation.
+  - **context_window**: Context window size for the language model.
+  - **max_output_tokens**: Maximum number of tokens for the output.
+  - **review_max_file_in_batch**: Maximum number of files to review in a batch.
+  - **review_token_buffer**: Token buffer ratio for review.
+  - **categorize_max_file_in_batch**: Maximum number of files to categorize in a batch.
+  - **categorize_token_buffer**: Token buffer ratio for categorization.
+  - **categorize_only**: Flag to indicate if only categorization should be performed (`true` or `false`).
+  - **completion_threshold**: Threshold for completion.
+
+### Patterns
+- **exclude_patterns**: List of file patterns to exclude from analysis.
+- **include_patterns**: List of file patterns to include in the analysis.
 
 
 ### **2. Run the Script**
