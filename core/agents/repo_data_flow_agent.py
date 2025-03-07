@@ -257,11 +257,11 @@ class DataFlowAgent:
             lines.append(f"🔄 Process: {process['name']} - {process['description']}")
         # Data Stores
         for store in report.get("data_stores", []):
-            lines.append(f"�️ Data Store: {store['name']} - {store['description']}")
+            lines.append(f"🗄️ Data Store: {store['name']} - {store['description']}")
         # Trust Boundaries
         for boundary in report.get("trust_boundaries", []):
             lines.append(
-                f"� Trust Boundary: {boundary['name']} - {boundary['description']}"
+                f"🔐  Trust Boundary: {boundary['name']} - {boundary['description']}"
             )
 
         return "\n".join(lines)

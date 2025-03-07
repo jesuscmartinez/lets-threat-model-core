@@ -15,6 +15,10 @@ logger = logging.getLogger(__name__)
 
 
 class Component(BaseModel):
+    """
+    Represents a system component, which could be a process, data store, or external entity.
+    """
+
     id: UUID = Field(default_factory=uuid4, description="UUID for the component.")
     name: str = Field(..., description="Name of the component (e.g., 'Login Flow').")
     description: str = Field(
@@ -35,6 +39,10 @@ class Component(BaseModel):
 
 
 class DataFlow(Component):
+    """
+    Describes a data flow between components, including its destination, type of data, and direction.
+    """
+
     destination_id: UUID = Field(
         ..., description="The target component_id of the data flow."
     )
@@ -61,6 +69,10 @@ class DataFlow(Component):
 
 
 class Node(Component):
+    """
+    Represents a node in the system that can have associated data flows.
+    """
+
     data_flows: List[DataFlow] = Field(
         default_factory=list,
         description="Set of DataFlows associated with this external entity.",
@@ -74,6 +86,11 @@ class Node(Component):
 
 
 class ExternalEntity(Node):
+    """
+    Represents an external entity that interacts with the system, such as a user or a third-party service.
+    Inherits from Node, and thus can have associated data flows.
+    """
+
     def __hash__(self):
         return hash(self.id)
 
@@ -82,6 +99,11 @@ class ExternalEntity(Node):
 
 
 class Process(Node):
+    """
+    Represents a process within the system that handles data.
+    A process receives input data, performs actions, and produces output data.
+    """
+
     input_data: List[str] = Field(
         default_factory=list,
         description="Specific data or triggers received by the process.",
@@ -98,6 +120,11 @@ class Process(Node):
 
 
 class DataStore(Node):
+    """
+    Represents a data storage component within the system.
+    It tracks the data written to and retrieved from the store.
+    """
+
     data_inputs: List[str] = Field(
         default_factory=list, description="List of data written to the store."
     )
@@ -113,6 +140,11 @@ class DataStore(Node):
 
 
 class TrustBoundary(Component):
+    """
+    Defines a trust boundary within the system, grouping components that share a common security context.
+    This helps delineate which components fall within the same security perimeter.
+    """
+
     component_ids: List[UUID] = Field(
         default_factory=list,
         description="Set of component_ids within this trust boundary, referencing existing components.",
@@ -132,6 +164,11 @@ class TrustBoundary(Component):
 
 
 class AgentDataFlowReport(BaseModel):
+    """
+    Provides a comprehensive report of the system's data flows.
+    This includes an overview and detailed lists of external entities, processes, data stores, and trust boundaries.
+    """
+
     overview: str = Field(
         default="No overview provided.", description="Overview of the data flow report."
     )
@@ -252,6 +289,11 @@ class AgentDataFlowReport(BaseModel):
 
 
 class DataFlowReport(AgentDataFlowReport):
+    """
+    Extends AgentDataFlowReport by including metadata related to file review processes.
+    This model adds unique identifiers and categorizes files based on their review status.
+    """
+
     id: UUID = Field(
         default_factory=uuid4, description="Unique identifier for the data flow report."
     )

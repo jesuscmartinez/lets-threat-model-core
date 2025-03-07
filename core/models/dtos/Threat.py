@@ -7,6 +7,15 @@ import uuid
 
 # Input schema for creating
 class AgentThreat(BaseModel):
+    """
+    Represents the input schema for creating a threat.
+
+    This model captures all necessary details to define a security threat,
+    including its name, detailed explanation, STRIDE security category, the
+    affected components (both names and IDs), the attack vector, the severity
+    of the impact, overall risk rating, and recommended mitigations.
+    """
+
     name: str = Field(..., description="The name of the identified threat.")
     description: str | None = Field(
         None, description="Detailed explanation of the threat."
@@ -61,6 +70,13 @@ class AgentThreat(BaseModel):
 
 # Output schema for returning data
 class Threat(AgentThreat):
+    """
+    Represents the output schema for a threat.
+
+    This model extends the AgentThreat input schema by adding unique identifiers,
+    linking the threat to the specific data flow report where it was detected.
+    """
+
     id: UUID = Field(
         default_factory=uuid.uuid4, description="Unique identifier for the threat."
     )

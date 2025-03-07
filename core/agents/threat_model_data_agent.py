@@ -133,6 +133,13 @@ class ThreatModelDataAgent:
 
         # Pydantic model for LLM results
         class Result(BaseModel):
+            """
+            Represents the structured output of an LLM-generated threat model result.
+
+            This model provides a title and a summary report for the generated
+            threat model, ensuring clear and structured documentation of findings.
+            """
+
             title: str = Field(..., description="Title for the summary.")
             summary: str = Field(
                 ..., description="A summary report of the threat model."
