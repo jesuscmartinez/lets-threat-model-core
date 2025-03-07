@@ -3,6 +3,8 @@ Agentic AI Threat Modeling
 
 This script generates a **threat model report** in **Markdown format** from a provided YAML file that defines an asset and its associated repositories.
 
+![Demo](demo/demo_fast.gif)
+
 ## 📌 Features
 - Parses a **YAML configuration file** containing asset and repository details.
 - Generates a **threat model** based on the given data.
