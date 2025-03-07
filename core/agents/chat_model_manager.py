@@ -67,6 +67,9 @@ class ChatModelManager:
             if provider.lower() == "anthropic":
                 api_key = api_key or SecretStr(os.getenv("ANTHROPIC_API_KEY", ""))
                 init_kwargs["api_key"] = api_key
+
+                del init_kwargs["frequency_penalty"]
+                del init_kwargs["presence_penalty"]
             elif provider.lower() == "openai":
                 api_key = api_key or SecretStr(os.getenv("OPENAI_API_KEY", ""))
                 init_kwargs["api_key"] = api_key

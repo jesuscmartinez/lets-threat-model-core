@@ -1,8 +1,6 @@
 gitpython==3.1.43
 python-dotenv==1.0.1
-langchain-core
 langchain
-# langchain-text-splitters==0.3.0
 langchain-ollama
 langchain-openai
 langchain-anthropic

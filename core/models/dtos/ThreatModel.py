@@ -8,6 +8,14 @@ from core.models.dtos.Repository import Repository
 
 
 class CreateThreatModel(BaseModel):
+    """
+    Represents the input schema for creating a new threat model.
+
+    This model captures all necessary information to define a threat model,
+    including the name, summary, associated assets, repositories, data flow diagrams,
+    data flow reports, and identified threats.
+    """
+
     name: str
     summary: str
     asset: Asset
@@ -19,6 +27,13 @@ class CreateThreatModel(BaseModel):
 
 # Output schema for returning data
 class ThreatModel(CreateThreatModel):
+    """
+    Represents the output schema for returning a generated threat model.
+
+    This model extends CreateThreatModel by adding a unique identifier (`id`),
+    ensuring each generated threat model has a referenceable UUID.
+    """
+
     id: UUID
 
     class Config:

@@ -2,6 +2,10 @@ from pydantic import BaseModel, Field
 
 
 class File(BaseModel):
+    """
+    Represents a file with its path and a brief justification for categorization.
+    """
+
     file_path: str = Field(..., description="Path to the file.")
     justification: str = Field(..., description="Brief reason for the categorization.")
 

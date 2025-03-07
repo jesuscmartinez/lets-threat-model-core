@@ -30,6 +30,17 @@ STRUCTURED_OUPUT_AGENT_LLM = os.getenv("STRUCTURED_OUPUT_AGENT_LLM", "")
 
 
 class AgentHelper:
+    """
+    A helper class to convert UUIDs to numbered placeholders and vice versa in a data flow report.
+    Attributes:
+        uuid_to_numbered_mapping (dict): A mapping from original UUIDs to numbered placeholders.
+        numbered_to_uuid_mapping (dict): A mapping from numbered placeholders to original or new UUIDs.
+        counter (int): A counter for generating numbered placeholders.
+    Methods:
+        convert_uuids_to_ids(data_flow_report: dict) -> dict:
+            Replaces all UUIDs in 'id', '_id', and '_ids' fields with numbered placeholders ('uuid_X', 'uuid_2', etc.)
+        convert_ids_to_uuids(data_flow_report: dict) -> dict:
+    """
 
     def __init__(self):
         self.uuid_to_numbered_mapping = {}  # {original UUID -> "uuid_X"}

@@ -184,6 +184,13 @@ class ThreatModelAgent:
         logger.info("🔍 Starting threat model analysis...")
 
         class Result(BaseModel):
+            """
+            Represents the result of a security analysis.
+
+            This model contains a list of identified threats detected during
+            the threat modeling process.
+            """
+
             threats: List[AgentThreat] = Field(..., description="Identified threats.")
 
         parser = JsonOutputParser(pydantic_object=Result)
@@ -230,10 +237,12 @@ class ThreatModelAgent:
                     }
                 )
 
+                logging.debug(
+                    f"✅ Threat analysis successful. Processed component: '{component_data.get('name', 'Unknown Component')}'. Result: {json.dumps(result, indent=2)}"
+                )
+
                 # If is O1, parse after the fact
                 if is_o1(self.model):
-                    logging.info(result)
-
                     cleaned_content = re.sub(r"```json|```", "", result.content).strip()
                     result = json.loads(cleaned_content)
 
@@ -289,6 +298,13 @@ class ThreatModelAgent:
         logger.info("🔍 Starting threat consolidation analysis...")
 
         class ConsolidationResult(BaseModel):
+            """
+            Represents the consolidated result of a security analysis.
+
+            This model aggregates identified threats from multiple analyses or
+            different components of the system into a single structured result.
+            """
+
             threats: List[AgentThreat] = Field(..., description="Identified threats.")
 
         parser = JsonOutputParser(pydantic_object=ConsolidationResult)

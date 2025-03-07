@@ -119,29 +119,29 @@ config:
 ### **2. Run the Script**
 Execute the script using the following command:
 ```sh
-python main.py config.yaml
+python -m main config.yaml
 ```
 
 **Optional:** Specify an output file:
 ```sh
-python main.py config.yaml -o output_report.md
+python -m main config.yaml -o output_report.md
 ```
 
 ### **3. Run the Script via Docker**
 #### **Build the Docker Image**
 ```sh
-docker build -t threat_model_generator -f cli/Dockerfile . 
+docker build -t threat_model_generator -f Dockerfile . 
 ```
 
 #### **Run the Container**
 ```sh
-docker run --rm -it -v $(pwd)/cli_data:/app/data --env-file cli/.env threat_model_generator python main.py data/config.yaml -o data/threat_model_report.md
+docker run --rm -it -v $(pwd):/app/ --env-file .env threat_model_generator python main.py config.yaml -o threat_model_report.md
 ```
 
 #### **Access the Generated Report**
-The Markdown report will be available in the `cli_data/` directory on your host machine:
+The Markdown report will be available on your host machine:
 ```sh
-cat cli_data/threat_model_report.md
+cat threat_model_report.md
 ```
 
 ---
