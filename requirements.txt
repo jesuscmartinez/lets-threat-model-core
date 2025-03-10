@@ -10,3 +10,4 @@ graphviz
 transformers
 pytest
 pytest-asyncio
+pytest-mock
