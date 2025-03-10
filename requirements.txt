@@ -8,3 +8,6 @@ langgraph
 langgraph-checkpoint-postgres
 graphviz
 transformers
+pytest
+pytest-asyncio
+pytest-mock

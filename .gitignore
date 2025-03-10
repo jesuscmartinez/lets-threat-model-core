@@ -175,3 +175,8 @@ cython_debug/
 .DS_Store
 
 *.yaml
+!.pre-commit-config.yaml
+
+
+*.md
+!README.md

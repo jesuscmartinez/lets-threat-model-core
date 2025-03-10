@@ -720,7 +720,7 @@ class DataFlowAgent:
             return True
 
         review_threshold = int(total * self.config.completion_threshold)
-        if count_reviewed > review_threshold:
+        if count_reviewed >= review_threshold:
             logger.info("✅ Enough files reviewed. Stopping review process.")
             return True
 

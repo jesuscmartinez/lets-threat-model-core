@@ -1,9 +1,9 @@
+import asyncio
+import json
 import logging
 import os
-import json
-import asyncio
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -23,12 +23,16 @@ from core.models.enums import StrideCategory, Level
 from core.agents.agent_tools import AgentHelper, is_o1
 from langgraph.graph import StateGraph, START, END
 
-# Configure logging
-log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+# -----------------------------------------------------------------------------
+# Configure Logging
+# -----------------------------------------------------------------------------
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+
 logging.basicConfig(
-    level=log_level,
-    format="%(asctime)s - %(levelname)s - %(message)s",
+    level=LOG_LEVEL,
+    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
 )
+
 logger = logging.getLogger(__name__)
 
 
@@ -144,7 +148,9 @@ Format Instructions:
 # ThreatModelAgent
 # -----------------------------------------------------------------------------
 class ThreatModelAgent:
-    def __init__(self, model: BaseChatModel):
+    """Threat modeling agent that performs STRIDE analysis and consolidation."""
+
+    def __init__(self, model: BaseChatModel) -> None:
         self.model = model
         self.agent_helper = AgentHelper()
 
@@ -152,28 +158,24 @@ class ThreatModelAgent:
     # Workflow Steps
     # -------------------------------------------------------------------------
     def initialize(self, state: ThreatGraphStateModel) -> ThreatGraphStateModel:
-        """
-        Convert the state's asset and data_flow_report from UUID to the
-        internal 'uuid_X' numbering scheme for easier reference.
-        """
-        # Convert asset to numbered IDs
-        numbered_asset = self.agent_helper.convert_uuids_to_ids(state.asset)
-        state.asset = numbered_asset
+        """Initialize the state by converting UUIDs to internal numbered IDs."""
+        logger.info("Initializing threat modeling state...")
 
-        # Convert data flow report to numbered IDs
-        numbered_report = self.agent_helper.convert_uuids_to_ids(state.data_flow_report)
-        state.data_flow_report = numbered_report
+        state.asset = self.agent_helper.convert_uuids_to_ids(state.asset)
+        state.data_flow_report = self.agent_helper.convert_uuids_to_ids(
+            state.data_flow_report
+        )
 
         return state
 
     def clean_up(self, state: ThreatGraphStateModel) -> ThreatGraphStateModel:
-        """
-        Convert threats from 'uuid_X' back to original UUID strings at the end of the workflow.
-        """
-        threats = [
+        """Clean up the state by converting internal numbered IDs back to UUIDs."""
+        logger.info("Cleaning up threat modeling state...")
+
+        state.threats = [
             self.agent_helper.convert_ids_to_uuids(threat) for threat in state.threats
         ]
-        state.threats = threats
+
         return state
 
     async def analyze(self, state: ThreatGraphStateModel) -> ThreatGraphStateModel:
@@ -196,16 +198,20 @@ class ThreatModelAgent:
         parser = JsonOutputParser(pydantic_object=Result)
         format_instructions = parser.get_format_instructions()
 
-        if is_o1(self.model):
-            system_prompt = AIMessagePromptTemplate.from_template(
-                SYSTEM_PROMPT_ANALYZE,
+        system_prompt_template = SYSTEM_PROMPT_ANALYZE
+
+        # Select the appropriate system prompt template
+        system_prompt = (
+            AIMessagePromptTemplate.from_template(
+                system_prompt_template,
                 partial_variables={"format_instructions": format_instructions},
             )
-        else:
-            system_prompt = SystemMessagePromptTemplate.from_template(
-                SYSTEM_PROMPT_ANALYZE,
+            if is_o1(self.model)
+            else SystemMessagePromptTemplate.from_template(
+                system_prompt_template,
                 partial_variables={"format_instructions": format_instructions},
             )
+        )
         user_prompt = HumanMessagePromptTemplate.from_template(
             "Component:\n{component}\n\nAsset:\n{asset}\nAgentDataFlowReport:\n{data_flow_report}"
         )
@@ -223,59 +229,23 @@ class ThreatModelAgent:
         asset = state.asset
         report = state.data_flow_report
 
-        # We'll define an async helper to process one component at a time
-        async def process_component(
-            component_data: Dict[str, Any]
-        ) -> List[Dict[str, Any]]:
-            """Invoke the LLM chain for a single component and return a list of threat dicts."""
-            try:
-                result = await chain.ainvoke(
-                    {
-                        "asset": json.dumps(asset),
-                        "data_flow_report": json.dumps(report),
-                        "component": json.dumps(component_data),
-                    }
-                )
+        tasks = [
+            self._process_component(component, asset, report, chain)
+            for key in (
+                "external_entities",
+                "processes",
+                "data_stores",
+                "trust_boundaries",
+            )
+            for component in report.get(key, [])
+        ]
 
-                logging.debug(
-                    f"✅ Threat analysis successful. Processed component: '{component_data.get('name', 'Unknown Component')}'. Result: {json.dumps(result, indent=2)}"
-                )
-
-                # If is O1, parse after the fact
-                if is_o1(self.model):
-                    cleaned_content = re.sub(r"```json|```", "", result.content).strip()
-                    result = json.loads(cleaned_content)
-
-                if isinstance(result, dict):
-                    identified = result.get("threats", [])
-                    logger.debug(
-                        "Found %d threats in component analysis.", len(identified)
-                    )
-                    return identified
-                return []
-            except Exception as e:
-                logger.error("❌ Error analyzing component: %s", e, exc_info=True)
-                return []
-
-        # Collect all components from the data_flow_report to be analyzed
-        tasks = []
-        for key in (
-            "external_entities",
-            "processes",
-            "data_stores",
-            "trust_boundaries",
-        ):
-            for component in report.get(key, []):
-                tasks.append(process_component(component))
-
-        # Process them concurrently
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Flatten the list of threats
-        all_threats = []
+        all_threats: List[Dict[str, Any]] = []
         for res in results:
             if isinstance(res, Exception):
-                logger.error("❌ An error occurred in threat analysis: %s", res)
+                logger.error("❌ An error occurred in component analysis", exc_info=res)
                 continue
             all_threats.extend(res)
 
@@ -283,19 +253,59 @@ class ThreatModelAgent:
             "✅ Finished threat model analysis. Total threats found: %d",
             len(all_threats),
         )
-        self.log_threat_state(all_threats)
+        self._log_threat_state(all_threats)
 
         state.threats = all_threats
         return state
 
+    async def _process_component(
+        self,
+        component_data: Dict[str, Any],
+        asset: Dict[str, Any],
+        report: Dict[str, Any],
+        chain: Any,
+    ) -> List[Dict[str, Any]]:
+        """Helper to process a single component asynchronously."""
+        try:
+            logger.debug(
+                "Processing component: %s",
+                component_data.get("name", "Unknown Component"),
+            )
+
+            result = await chain.ainvoke(
+                {
+                    "asset": json.dumps(asset),
+                    "data_flow_report": json.dumps(report),
+                    "component": json.dumps(component_data),
+                }
+            )
+
+            if is_o1(self.model):
+                cleaned_content = re.sub(r"```json|```", "", result.content).strip()
+                result = json.loads(cleaned_content)
+
+            threats = result.get("threats", []) if isinstance(result, dict) else []
+            logger.debug(
+                "Identified %d threats in component: %s",
+                len(threats),
+                component_data.get("name", "Unknown Component"),
+            )
+
+            return threats
+
+        except Exception as e:
+            logger.exception(
+                "❌ Error analyzing component '%s': %s",
+                component_data.get("name", "Unknown Component"),
+                str(e),
+            )
+            return []
+
     def consolidate_threats(
         self, state: ThreatGraphStateModel
     ) -> ThreatGraphStateModel:
-        """
-        Takes the existing 'threats' in state and attempts to merge only truly similar
-        threats within each STRIDE category.
-        """
-        logger.info("🔍 Starting threat consolidation analysis...")
+        """Consolidate similar threats within each STRIDE category."""
+        logger.info("🔍 Starting threat consolidation...")
 
         class ConsolidationResult(BaseModel):
             """
@@ -305,136 +315,91 @@ class ThreatModelAgent:
             different components of the system into a single structured result.
             """
 
-            threats: List[AgentThreat] = Field(..., description="Identified threats.")
+            threats: List[AgentThreat]
 
         parser = JsonOutputParser(pydantic_object=ConsolidationResult)
-
         system_prompt = SystemMessagePromptTemplate.from_template(
             SYSTEM_PROMPT_CONSOLIDATE,
             partial_variables={"format_instructions": parser.get_format_instructions()},
         )
         user_prompt = HumanMessagePromptTemplate.from_template("Threats:\n{threats}")
-
         prompt = ChatPromptTemplate.from_messages([system_prompt, user_prompt])
+
         chain = prompt | self.model.with_structured_output(
             schema=ConsolidationResult.model_json_schema()
         )
 
-        # Group threats by stride_category
-        threats = state.threats
-        stride_groups = {}
-        for threat in threats:
+        stride_groups: Dict[str, List[Dict[str, Any]]] = {}
+        for threat in state.threats:
             category = threat.get("stride_category", "Unknown")
             stride_groups.setdefault(category, []).append(threat)
 
-        # Process each category separately
-        consolidated = []
+        consolidated: List[Dict[str, Any]] = []
         for category, group_list in stride_groups.items():
             try:
+                logger.info("Consolidating threats in category: %s", category)
                 result = chain.invoke(input={"threats": json.dumps(group_list)})
-                merged = result.get("threats", [])
-                consolidated.extend(merged)
+                merged_threats = result.get("threats", [])
+                consolidated.extend(merged_threats)
             except Exception as e:
-                logger.error(
-                    "❌ Error consolidating threats in category %s: %s", category, e
+                logger.exception(
+                    "❌ Error consolidating threats in category '%s'", category
                 )
 
         logger.info(
-            "✅ Finished threat consolidation analysis. Total: %d", len(consolidated)
+            "✅ Finished threat consolidation. Total consolidated threats: %d",
+            len(consolidated),
         )
-        self.log_threat_state(consolidated)
+        self._log_threat_state(consolidated)
+
         state.threats = consolidated
         return state
 
     # -------------------------------------------------------------------------
     # Logging / Reporting Helpers
     # -------------------------------------------------------------------------
-    def log_threat_state(self, threats: List[Dict[str, Any]]) -> None:
-        """
-        Logs a summary of identified threats, including STRIDE distribution and risk levels.
-        """
+    def _log_threat_state(self, threats: List[Dict[str, Any]]) -> None:
+        """Log summary of identified threats, including STRIDE distribution and risk levels."""
         if not threats:
             logger.warning("No threats identified.")
             return
 
-        # Initialize counters for STRIDE categories and risk levels
         stride_counts = {
-            "Spoofing": 0,
-            "Tampering": 0,
-            "Repudiation": 0,
-            "Information Disclosure": 0,
-            "Denial of Service": 0,
-            "Elevation of Privilege": 0,
+            category: 0
+            for category in (
+                "Spoofing",
+                "Tampering",
+                "Repudiation",
+                "Information Disclosure",
+                "Denial of Service",
+                "Elevation of Privilege",
+            )
         }
-        risk_counts = {
-            "Low": 0,
-            "Medium": 0,
-            "High": 0,
-            "Critical": 0,
-        }
+        risk_counts = {"Low": 0, "Medium": 0, "High": 0, "Critical": 0}
 
         for threat in threats:
             stride = threat.get("stride_category", "Unknown")
             risk = threat.get("risk_rating", "Unknown")
 
-            if stride in stride_counts:
-                stride_counts[stride] += 1
-            else:
-                logger.warning("⚠️ Unknown STRIDE category: %s", stride)
-
-            if risk in risk_counts:
-                risk_counts[risk] += 1
-            else:
-                logger.warning("⚠️ Unknown Risk Rating: %s", risk)
+            stride_counts[stride] = stride_counts.get(stride, 0) + 1
+            risk_counts[risk] = risk_counts.get(risk, 0) + 1
 
         logger.info(
-            "🚨 Threat Summary:\n"
-            "  ⚠️ Total Threats: %d\n"
-            "  🔐 STRIDE Breakdown:\n"
-            "    🕵️ Spoofing: %d\n"
-            "    ✍️ Tampering: %d\n"
-            "    📝 Repudiation: %d\n"
-            "    🔓 Information Disclosure: %d\n"
-            "    ⛔ Denial of Service: %d\n"
-            "    📈 Elevation of Privilege: %d\n"
-            "  🔥 Risk Levels:\n"
-            "    🟢 Low: %d\n"
-            "    🟡 Medium: %d\n"
-            "    🔴 High: %d\n"
-            "    🛑 Critical: %d",
-            len(threats),
-            stride_counts["Spoofing"],
-            stride_counts["Tampering"],
-            stride_counts["Repudiation"],
-            stride_counts["Information Disclosure"],
-            stride_counts["Denial of Service"],
-            stride_counts["Elevation of Privilege"],
-            risk_counts["Low"],
-            risk_counts["Medium"],
-            risk_counts["High"],
-            risk_counts["Critical"],
+            f"🚨 Threat Summary:\n"
+            f"  ⚠️ Total Threats: {len(threats)}\n"
+            f"  🔐 STRIDE Breakdown:\n"
+            f"    🕵️ Spoofing: {stride_counts['Spoofing']}\n"
+            f"    ✍️ Tampering: {stride_counts['Tampering']}\n"
+            f"    📝 Repudiation: {stride_counts['Repudiation']}\n"
+            f"    🔓 Information Disclosure: {stride_counts['Information Disclosure']}\n"
+            f"    ⛔ Denial of Service: {stride_counts['Denial of Service']}\n"
+            f"    📈 Elevation of Privilege: {stride_counts['Elevation of Privilege']}\n"
+            f"  🔥 Risk Levels:\n"
+            f"    🟢 Low: {risk_counts['Low']}\n"
+            f"    🟡 Medium: {risk_counts['Medium']}\n"
+            f"    🔴 High: {risk_counts['High']}\n"
+            f"    🛑 Critical: {risk_counts['Critical']}"
         )
-
-        # Log each threat in detail
-        for threat in threats:
-            logger.info(
-                "🚨 Threat: %s\n"
-                "  📌 Description: %s\n"
-                "  🎯 STRIDE Category: %s\n"
-                "  🏗️ Components: %s\n"
-                "  🔍 Attack Vector: %s\n"
-                "  ⚠️ Impact Level: %s\n"
-                "  🔥 Risk Rating: %s\n"
-                "  🛡️ Mitigations: %s",
-                threat.get("name", "Unknown Threat"),
-                threat.get("description", "No description provided"),
-                threat.get("stride_category", "Unknown"),
-                threat.get("component_names", "Unknown Component"),
-                threat.get("attack_vector", "No attack vector"),
-                threat.get("impact_level", "Unknown"),
-                threat.get("risk_rating", "Unknown"),
-                threat.get("mitigations", "No mitigation provided"),
-            )
 
     # -------------------------------------------------------------------------
     # Workflow

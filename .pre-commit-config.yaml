@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: run-pytest
+        name: Run pytest before commit
+        entry: pytest tests/ --asyncio-mode=auto --disable-warnings
+        language: system
+        pass_filenames: false
+        types: [python]
