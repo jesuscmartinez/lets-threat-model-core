@@ -13,6 +13,14 @@ jobs:
   test:
     runs-on: ubuntu-latest  # Use GitHub-hosted Linux runner
 
+    env:
+      LOG_LEVEL: INFO
+      GITHUB_USERNAME: fake_username
+      GITHUB_PAT: fake_personal_access_tokne
+      OPENAI_API_KEY: fake-openapi-key
+      ANTHROPIC_API_KEY: fake-anthropicapi-key
+      OLLAMA_BASE_URL: fake-ollama_base_url
+
     steps:
       # Step 1: Checkout code
       - name: Checkout code
