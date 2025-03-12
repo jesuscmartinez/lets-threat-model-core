@@ -558,7 +558,7 @@ class DataFlowAgent:
 
         # For structured output
         chain = prompt | self.review_model.with_structured_output(
-            schema=AgentDataFlowReport.model_json_schema()
+            schema=AgentDataFlowReport.model_json_schema(),
         )
 
         # If we have an O1 model, we'll adapt the chain logic
@@ -664,12 +664,41 @@ class DataFlowAgent:
 
             # Invoke the chain
             try:
+
+                # Serialize file data once
+                file_data_json = json.dumps(batch_files)
+
+                # Format the complete prompt once
+                full_prompt = prompt.format(
+                    file_data=file_data_json, data_flow_report=report_json
+                )
+
+                # Compute total tokens and log the count
+                total_tokens = self.review_model.get_num_tokens(full_prompt)
+                logger.debug("Total prompt tokens: %s", total_tokens)
+
+                # Check if the full prompt is within the allowed token budget
+                token_budget = (
+                    self.config.context_window - self.config.max_output_tokens
+                )
+                if total_tokens > token_budget:
+                    logger.warning(
+                        "Full prompt exceeds token budget (%d > %d tokens)!",
+                        total_tokens,
+                        token_budget,
+                    )
+
+                logging.debug("LLM prompt: %s", full_prompt)
+                # Invoke the chain with pre-serialized file data and report JSON
                 llm_result = chain.invoke(
                     {
-                        "file_data": json.dumps(batch_files),
+                        "file_data": file_data_json,
                         "data_flow_report": report_json,
                     }
                 )
+
+                logging.debug("LLM response: %s", llm_result)
+
                 processed_count += files_in_batch
                 logger.info(
                     "Processed %d/%d files successfully.",

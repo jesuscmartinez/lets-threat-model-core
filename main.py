@@ -32,13 +32,24 @@ GITHUB_USERNAME = os.getenv("GITHUB_USERNAME", "")
 GITHUB_PAT = SecretStr(os.getenv("GITHUB_PAT", ""))
 
 
+def safe_join(base_directory: Path, user_path: str) -> Path:
+    """
+    Safely join a user-provided path with a base directory.
+    """
+    base_directory = base_directory.resolve()
+    combined_path = (base_directory / user_path).resolve()
+    if base_directory not in combined_path.parents and combined_path != base_directory:
+        raise ValueError(f"Invalid path: {user_path}")
+    return combined_path
+
+
 def load_yaml_config(file_path: str) -> dict:
     """Loads a YAML configuration file into a dictionary."""
-    path = Path(file_path)
-    if not path.exists():
-        raise FileNotFoundError(f"❌ Config file not found: {file_path}")
+    safe_path = safe_join(Path.cwd(), file_path)
+    if not safe_path.exists():
+        raise FileNotFoundError(f"❌ Config file not found: {safe_path}")
 
-    with path.open("r") as file:
+    with safe_path.open("r") as file:
         return yaml.safe_load(file)
 
 
