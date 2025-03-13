@@ -137,7 +137,7 @@ python -m main config.yaml
 
 **Optional:** Specify an output file:
 ```sh
-python -m main config.yaml -o output_report.md
+python -m main config.yaml -o threat_model_report.mdd
 ```
 
 ### **3. Run the Script via Docker**
@@ -151,10 +151,9 @@ With remote repository:
 ```sh
 docker run --rm -it \
   -v "$(pwd)":/app \
-
   --env-file .env \
   threat_model_generator \
-  python main.py cli_data/example.config.yaml -o threat_model_report.md
+  python main.py config.yaml -o threat_model_report.md
 ```
 
 With local repository:
@@ -164,7 +163,7 @@ docker run --rm -it \
   -v "$(pwd)":/repos/my-local-repo \
   --env-file .env \
   threat_model_generator \
-  python main.py cli_data/example.config.yaml -o threat_model_report.md
+  python main.py config.yaml -o threat_model_report.md
 ```
 
 #### **Access the Generated Report**
