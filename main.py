@@ -2,7 +2,7 @@ import argparse
 import asyncio
 import logging
 import os
-from uuid import uuid4
+from uuid import UUID, uuid4
 from pathlib import Path
 import yaml
 from pydantic import SecretStr
@@ -18,13 +18,20 @@ from core.services.threat_model_services import generate_threat_model
 from core.services.reports import generate_threat_model_report
 
 # Load environment variables
-load_dotenv()
+from dotenv import load_dotenv
+from pathlib import Path
 
-# Configure logging
+load_dotenv()
+# Get LOG_LEVEL from env or default to INFO
+log_level_str = os.getenv("LOG_LEVEL", "INFO").upper()
+log_level = getattr(logging, log_level_str, logging.INFO)
+
+# Setup basic logging
 logging.basicConfig(
-    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    level=log_level,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
+
 logger = logging.getLogger(__name__)
 
 # Load secrets
@@ -34,9 +41,9 @@ GITHUB_PAT = SecretStr(os.getenv("GITHUB_PAT", ""))
 
 def load_yaml_config(file_path: str) -> dict:
     """Loads a YAML configuration file into a dictionary."""
-    path = Path(file_path)
+    path = Path(file_path).resolve()
     if not path.exists():
-        raise FileNotFoundError(f"❌ Config file not found: {file_path}")
+        raise FileNotFoundError(f"❌ Config file not found: {path}")
 
     with path.open("r") as file:
         return yaml.safe_load(file)
@@ -56,17 +63,32 @@ def parse_asset(data: dict) -> Asset:
     )
 
 
-def parse_repositories(data: list, asset_id: uuid4) -> list[Repository]:
+def parse_repositories(data: list, asset_id: UUID) -> list[Repository]:
     """Parses repository information from YAML data."""
-    return [
-        Repository(
-            id=uuid4(),
-            name=repo.get("name", "Unnamed Repository"),
-            url=repo.get("url", "N/A"),
-            asset_id=asset_id,
+    repositories = []
+
+    for repo in data:
+        url = repo.get("url")
+        local_path = repo.get("local_path")
+
+        # Validation: Only one should be provided
+        if (url and local_path) or (not url and not local_path):
+            raise ValueError(
+                f"Repository '{repo.get('name', 'Unnamed Repository')}' must have either 'url' or 'local_path', but not both."
+            )
+
+        repositories.append(
+            Repository(
+                id=uuid4(),
+                name=repo.get("name", "Unnamed Repository"),
+                description=repo.get("description"),
+                url=url,
+                local_path=local_path,
+                asset_id=asset_id,
+            )
         )
-        for repo in data
-    ]
+
+    return repositories
 
 
 def build_threat_model_config(
@@ -135,7 +157,7 @@ async def main(yaml_file: str, output_file: str):
             + f"\n\n📝 Generated Threat Model:\n{threat_model.model_dump_json(indent=4)}"
         )
 
-        output_path = Path(output_file)
+        output_path = Path(output_file).expanduser().resolve(strict=False)
         output_path.write_text(markdown_report)
 
         logger.info(f"✅ Threat model report generated and saved to: {output_path}")

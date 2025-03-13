@@ -1,7 +1,7 @@
 import logging
-import os
+import logging
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from pydantic import BaseModel, Field
 
@@ -12,19 +12,10 @@ from langchain_core.prompts import (
     HumanMessagePromptTemplate,
     ChatPromptTemplate,
 )
-from langchain_core.output_parsers import PydanticOutputParser
-from core.agents.agent_tools import AgentHelper
+from core.agents.agent_tools import AgentHelper, async_invoke_with_retry
 from langgraph.graph import StateGraph, START, END
 
 
-# -----------------------------------------------------------------------------
-# Configure logging
-# -----------------------------------------------------------------------------
-log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(
-    level=log_level,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
 logger = logging.getLogger(__name__)
 
 
@@ -44,21 +35,37 @@ class ThreatModelDataStateModel(BaseModel):
 # -----------------------------------------------------------------------------
 SYSTEM_GENERATE_PROMPT = """\
 Objective:
-You are given the following data structures:
+You are an expert in software threat modeling.
 
-1. **Asset** (represents a specific resource or system entity)
-2. **List[Repository]** (one or more code repositories associated with the asset)
-3. **List[DataFlowReport]** (detailed analyses of data flows within or related to the repositories)
-4. **List[Threat]** (list of identified threats associated with the asset and its repositories)
+You will receive the following inputs:
+1. **Asset**: Represents a specific resource or system entity.
+2. **List[Repository]**: One or more code repositories associated with the asset.
+3. **List[DataFlowReport]**: Detailed analyses of data flows within or related to the repositories.
+4. **List[Threat]**: Identified threats associated with the asset and its repositories.
+5. **Prior Summary** (optional): A previously generated summary of the threat model reports, if available.
 
-Please perform the following steps:
+Your task is to analyze this information and perform the following steps:
 
-1. **Title**: Generate a concise, descriptive title that encapsulates the overall context of these data structures (e.g., "System Data Flow and Security Overview").
-2. **Summary**: Provide a summary of:
-    - The role of the asset and its significance.
-    - The purpose of the repositories and their connection to the asset.
-    - The presence of data flow reports and why they are important.
-    - The existence of potential threats and their impact on the asset.
+### 1. Title
+Generate a concise, descriptive **title** that encapsulates the overall context of these data structures and their implications. The title should reflect the latest understanding of the system and any new insights.  
+_(Example: "System Data Flow and Security Overview")_
+
+### 2. Summary
+Provide a comprehensive **summary** that:
+- Describes the role and significance of the **Asset** in the system.
+- Explains the purpose of the **Repositories** and their connection to the asset.
+- Discusses the relevance and key insights from the **DataFlowReports**, including how they illustrate the flow of data, the involved entities, processes, data stores, and trust boundaries.
+- Identifies and highlights the **Threats**, explaining their potential impact on the asset and the system's security posture.
+
+### 3. Refine or Expand Previous Summary (if provided)
+If a **prior summary** is provided:
+- Refine or expand the previous summary to incorporate any **new information** from the latest report.
+- Ensure the updated summary remains coherent and comprehensive, reflecting the **latest understanding** of the system.
+- Do **not** simply repeat previous content—integrate new findings and insights while maintaining clarity and conciseness.
+
+### Output Format:
+- **Title**: A clear, concise title.
+- **Summary**: An updated summary that builds upon the prior summary (if provided) and integrates all new information.
 """
 
 
@@ -81,9 +88,6 @@ class ThreatModelDataAgent:
         if "asset" not in threat_model or threat_model["asset"] is None:
             raise ValueError("Asset data is missing in threat_model")
 
-        if "repos" not in threat_model or threat_model["repos"] is None:
-            raise ValueError("Repo data is missing in threat_model")
-
         if (
             "data_flow_reports" not in threat_model
             or threat_model["data_flow_reports"] is None
@@ -96,13 +100,6 @@ class ThreatModelDataAgent:
         # Convert asset
         numbered_asset = self.agent_helper.convert_uuids_to_ids(threat_model["asset"])
         threat_model["asset"] = numbered_asset
-
-        # Convert repos
-        repos = threat_model["repos"]
-        numbered_repos = [
-            self.agent_helper.convert_uuids_to_ids(repo) for repo in repos
-        ]
-        threat_model["repos"] = numbered_repos
 
         # Convert data flow reports
         data_flow_reports = threat_model["data_flow_reports"]
@@ -150,9 +147,9 @@ class ThreatModelDataAgent:
             SYSTEM_GENERATE_PROMPT
         )
         user_prompt = HumanMessagePromptTemplate.from_template(
+            "Previous Summary:\n{previous_summary}\n\n"
             "Asset:\n{asset}\n\n"
-            "Repositories:\n{repos}\n"
-            "DataFlowReport:\n{data_flow_reports}\n\n"
+            "DataFlowReport:\n{data_flow_report}\n\n"
             "Threats:\n{threats}\n"
         )
         prompt = ChatPromptTemplate.from_messages([system_prompt, user_prompt])
@@ -165,23 +162,35 @@ class ThreatModelDataAgent:
         # Prepare inputs
         threat_model = state.threat_model
         asset = threat_model.get("asset", {})
-        repos = threat_model.get("repos", [])
         reports = threat_model.get("data_flow_reports", [])
         threats = threat_model.get("threats", [])
 
-        # Invoke chain
-        result = await chain.ainvoke(
-            {
+        # Start with an empty summary
+        previous_summary = "No previous summary available."
+
+        # Loop over each data flow report, progressively building the summary
+        for idx, report in enumerate(reports):
+            logger.info(f"📄 Generating summary for report {idx + 1}/{len(reports)}...")
+
+            overview = report.get("overview", "No overview available.")
+
+            # Prepare inputs for this iteration
+            chain_inputs = {
+                "previous_summary": previous_summary,
                 "asset": json.dumps(asset),
-                "repos": json.dumps(repos),
-                "data_flow_reports": json.dumps(reports),
+                "data_flow_report": json.dumps(overview),  # Singular report
                 "threats": json.dumps(threats),
             }
-        )
 
-        # Ensure result is a dictionary
-        if isinstance(result, dict):
-            result = Result(**result)
+            # Invoke the chain with retry logic
+            result = await async_invoke_with_retry(chain, chain_inputs)
+
+            # Ensure result is parsed correctly
+            if isinstance(result, dict):
+                result = Result(**result)
+
+            # Update the running summary with the latest result
+            previous_summary = result.summary
 
         state.title = result.title
         state.summary = result.summary

@@ -68,7 +68,6 @@ def data_flow_agent(agent_config):
     base_chat_model = MagicMock(spec=BaseChatModel)
     base_chat_model.get_num_tokens.return_value = 10
     agent = DataFlowAgent(
-        repo_url="https://dummy.repo",
         directory=temp_dir.name,
         username="dummy_user",
         password=SecretStr("dummy_pass"),
@@ -106,24 +105,13 @@ def test_initialize(data_flow_agent, initial_graph_state):
     )
 
 
-def test_clean_up(data_flow_agent, initial_graph_state):
+def test_finalize(data_flow_agent, initial_graph_state):
     initial_graph_state.data_flow_report = {"dummy": "value"}
-    updated_state = data_flow_agent.clean_up(initial_graph_state)
+    updated_state = data_flow_agent.finalize(initial_graph_state)
     assert updated_state.data_flow_report == {"restored": {"dummy": "value"}}
     data_flow_agent.agent_helper.convert_ids_to_uuids.assert_called_once_with(
         {"dummy": "value"}
     )
-
-
-def test_clone_repository(data_flow_agent, initial_graph_state, tmp_path):
-    dummy_repo = MagicMock()
-    dummy_repo.head.reference.name = "main"
-    dummy_repo.head.commit.hexsha = "deadbeef"
-    with patch.object(GitRepo, "clone_from", return_value=dummy_repo) as mock_clone:
-        updated_state = data_flow_agent.clone_repository(initial_graph_state)
-        expected_url = f"https://{data_flow_agent.username}:{data_flow_agent.password}@{data_flow_agent.repo_url}"
-        mock_clone.assert_called_once_with(expected_url, data_flow_agent.directory)
-        assert updated_state is initial_graph_state
 
 
 def test_rules_categorization(data_flow_agent, initial_graph_state, tmp_path):
@@ -219,10 +207,6 @@ async def test_workflow_run(data_flow_agent, initial_graph_state):
         state.data_flow_report = {"converted": True}
         return state
 
-    def dummy_clone_repository(state: GraphStateModel) -> GraphStateModel:
-        state.data_flow_report["repo_cloned"] = True
-        return state
-
     def dummy_rules_categorization(state: GraphStateModel) -> GraphStateModel:
         from core.models.dtos.File import File
 
@@ -243,18 +227,17 @@ async def test_workflow_run(data_flow_agent, initial_graph_state):
     def dummy_done_reviewing(state: GraphStateModel) -> bool:
         return True
 
-    def dummy_clean_up(state: GraphStateModel) -> GraphStateModel:
+    def dummy_finalize(state: GraphStateModel) -> GraphStateModel:
         state.data_flow_report = {"final": "report"}
         return state
 
     data_flow_agent.initialize = dummy_initialize
-    data_flow_agent.clone_repository = dummy_clone_repository
     data_flow_agent.rules_categorization = dummy_rules_categorization
     data_flow_agent.categorize_only = dummy_categorize_only
     data_flow_agent.review_files = dummy_review_files
     data_flow_agent.categorize_files = dummy_categorize_filepaths
     data_flow_agent.done_reviewing = dummy_done_reviewing
-    data_flow_agent.clean_up = dummy_clean_up
+    data_flow_agent.finalize = dummy_finalize
 
     workflow = data_flow_agent.get_workflow()
     result_state = await workflow.ainvoke(initial_graph_state.dict())

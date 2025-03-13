@@ -55,7 +55,6 @@ def test_initialize_valid_data(mock_agent, valid_state):
     new_state = mock_agent.initialize(valid_state)
 
     assert new_state.threat_model["asset"] == {"uuid_X": "1234"}
-    assert new_state.threat_model["repos"] == [{"uuid_X": "5678"}]
     assert new_state.threat_model["data_flow_reports"] == [{"uuid_X": "91011"}]
     assert new_state.threat_model["threats"] == [{"uuid_X": "1213"}]
 

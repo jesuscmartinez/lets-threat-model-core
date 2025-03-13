@@ -1,6 +1,7 @@
 import pytest
-from uuid import UUID, uuid4
-from unittest.mock import patch, AsyncMock
+from uuid import UUID
+from unittest.mock import patch, AsyncMock, MagicMock
+from pydantic import SecretStr
 
 from core.models.dtos.Asset import Asset
 from core.models.dtos.Repository import Repository
@@ -14,7 +15,13 @@ from core.services.threat_model_services import (
     generate_data_flow,
     generate_threats,
     generate_threat_model_data,
+    process_remote_repository,
+    clone_repository,
 )
+
+# ----------------------------------------
+# Fixtures
+# ----------------------------------------
 
 
 @pytest.fixture
@@ -25,7 +32,7 @@ def threat_model_config() -> ThreatModelConfig:
         report_agent_llm="gpt-4o-mini",
         threat_model_agent_llm="gpt-4o-mini",
         username="user",
-        pat="token",
+        pat=SecretStr("token"),
         context_window=2048,
         max_output_tokens=512,
         review_max_file_in_batch=10,
@@ -63,10 +70,6 @@ def test_repos(test_asset) -> list[Repository]:
 
 @pytest.fixture
 def test_data_flow_report(test_repos) -> DataFlowReport:
-    """
-    Fixture that creates a default DataFlowReport object
-    associated with the first test repository.
-    """
     return DataFlowReport(
         id="4fab6f10-fe7d-444c-a6ff-0cb81a0d8cf5",
         repository_id=test_repos[0].id,
@@ -78,28 +81,26 @@ def test_data_flow_report(test_repos) -> DataFlowReport:
     )
 
 
+# ----------------------------------------
+# Tests for generate_threat_model
+# ----------------------------------------
+
+
 @pytest.mark.asyncio
 async def test_generate_threat_model(
     test_asset, test_repos, test_data_flow_report, threat_model_config
 ):
-    """
-    Test the high-level generation of a ThreatModel from an Asset and Repos.
-    """
     with patch(
-        "core.services.threat_model_services.generate_data_flow",
-        new_callable=AsyncMock,
+        "core.services.threat_model_services.generate_data_flow", new_callable=AsyncMock
     ) as mock_generate_data_flow, patch(
-        "core.services.threat_model_services.generate_threats",
-        new_callable=AsyncMock,
+        "core.services.threat_model_services.generate_threats", new_callable=AsyncMock
     ) as mock_generate_threats, patch(
         "core.services.threat_model_services.generate_threat_model_data",
         new_callable=AsyncMock,
     ) as mock_generate_threat_model_data, patch(
-        "core.services.reports.generate_mermaid_from_dataflow",
-        return_value="diagram",
+        "core.services.reports.generate_mermaid_from_dataflow", return_value="diagram"
     ):
-
-        # Mock return values
+        # Setup mock returns
         mocked_data_flow_report = DataFlowReport(
             id="4fab6f10-fe7d-444c-a6ff-0cb81a0d8cf3",
             repository_id=test_repos[0].id,
@@ -132,58 +133,167 @@ async def test_generate_threat_model(
             "summary": "Test Summary",
         }
 
-        # Run code under test
+        # Act
         threat_model = await generate_threat_model(
             test_asset, test_repos, threat_model_config
         )
 
-        # Verify results
+        # Assert
         assert threat_model.name == "Test Threat Model"
         assert threat_model.summary == "Test Summary"
         assert len(threat_model.data_flow_reports) == 1
         assert len(threat_model.threats) == 1
 
 
+# ----------------------------------------
+# Tests for generate_data_flow (local repo)
+# ----------------------------------------
+
+
 @pytest.mark.asyncio
-async def test_generate_data_flow(mocker, threat_model_config, test_repos):
+async def test_generate_data_flow_local_repo(mocker, threat_model_config):
     """
-    Test generation of a data flow report from a repository.
+    Test generate_data_flow when processing a local repository.
     """
-    # The result you expect from the agent call
-    mock_result = {
+
+    local_repo = Repository(
+        id="4fab6f10-fe7d-444c-a6ff-0cb81a0d8cf2",
+        name="Test Local Repo",
+        local_path="/path/to/local/repo",
+        asset_id="4fab6f10-fe7d-444c-a6ff-0cb81a0d8cf1",
+    )
+
+    # Mock Path.exists() and Path.is_dir() to return True
+    mocker.patch("core.services.threat_model_services.Path.exists", return_value=True)
+    mocker.patch("core.services.threat_model_services.Path.is_dir", return_value=True)
+
+    mock_workflow = AsyncMock()
+    mock_workflow.ainvoke.return_value = {
         "data_flow_report": {},
-        "could_not_review": set(),
-        "could_review": set(),
-        "should_not_review": set(),
-        "should_review": set(),
-        "reviewed": set(),
+        "could_review": [],
+        "reviewed": [],
+        "should_review": [],
+        "could_not_review": [],
+        "should_not_review": [],
     }
 
-    # Create a mock "workflow" object that has an async ainvoke() method
-    mock_workflow = AsyncMock()
-    mock_workflow.ainvoke.return_value = mock_result
-
-    # Patch get_workflow so that whenever code calls data_flow_agent.get_workflow(),
-    # it actually returns our mock_workflow
     mocker.patch(
         "core.agents.repo_data_flow_agent.DataFlowAgent.get_workflow",
         return_value=mock_workflow,
     )
 
-    # Now call the real function that uses DataFlowAgent internally
-    data_flow_report = await generate_data_flow(test_repos[0], threat_model_config)
+    # Act
+    data_flow_report = await generate_data_flow(local_repo, threat_model_config)
 
-    # If your generate_data_flow logic sets the repository_id to the repo's id:
-    assert data_flow_report.repository_id == test_repos[0].id
+    # Assert
+    assert data_flow_report.repository_id == local_repo.id
+
+
+# ----------------------------------------
+# Tests for process_remote_repository
+# ----------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_process_remote_repository_calls_clone_repository(mocker):
+    repository = Repository(
+        id="4fab6f10-fe7d-444c-a6ff-0cb81a0d8cf2",
+        name="Test Remote Repo",
+        url="https://github.com/example/repo.git",
+        asset_id="4fab6f10-fe7d-444c-a6ff-0cb81a0d8cf1",
+    )
+
+    config = ThreatModelConfig(
+        llm_provider="openai",
+        categorization_agent_llm="gpt-4o-mini",
+        report_agent_llm="gpt-4o-mini",
+        threat_model_agent_llm="gpt-4o-mini",
+        username="testuser",
+        pat=SecretStr("testpat"),
+        context_window=2048,
+        max_output_tokens=512,
+        review_max_file_in_batch=10,
+        review_token_buffer=100,
+        categorize_max_file_in_batch=10,
+        categorize_token_buffer=100,
+        categorize_only=False,
+        completion_threshold=0.9,
+    )
+
+    # Patch clone_repository and create_data_flow_agent
+    mock_clone_repo = mocker.patch(
+        "core.services.threat_model_services.clone_repository"
+    )
+
+    mock_agent = MagicMock()
+    mock_workflow = AsyncMock()
+    mock_workflow.ainvoke.return_value = {
+        "data_flow_report": {},
+        "could_review": [],
+        "reviewed": [],
+        "should_review": [],
+        "could_not_review": [],
+        "should_not_review": [],
+    }
+
+    mock_agent.get_workflow.return_value = mock_workflow
+
+    mock_create_agent = mocker.patch(
+        "core.services.threat_model_services.create_data_flow_agent",
+        return_value=mock_agent,
+    )
+
+    # Act
+    result = await process_remote_repository(repository, config)
+
+    # Assert
+    mock_clone_repo.assert_called_once()
+    mock_create_agent.assert_called_once()
+    mock_workflow.ainvoke.assert_called_once()
+    assert "data_flow_report" in result
+
+
+# ----------------------------------------
+# Test for clone_repository (GitHub clone)
+# ----------------------------------------
+
+
+def test_clone_repository_with_github(mocker):
+    username = "myuser"
+    pat = SecretStr("ghp_12345FAKETOKEN")
+    github_repo_url = "github.com/myuser/myrepo.git"
+    temp_dir = "/tmp/clonedir"
+
+    mock_git_repo = mocker.patch(
+        "core.services.threat_model_services.GitRepo.clone_from"
+    )
+
+    mock_repo = MagicMock()
+    mock_repo.head.reference.name = "main"
+    mock_repo.head.commit.hexsha = "abcdef123456"
+
+    mock_git_repo.return_value = mock_repo
+
+    # Act
+    result = clone_repository(username, pat, github_repo_url, temp_dir)
+
+    # Assert
+    expected_url = f"https://{username}:{pat.get_secret_value()}@{github_repo_url}"
+    mock_git_repo.assert_called_once_with(expected_url, temp_dir)
+
+    assert result.head.reference.name == "main"
+    assert result.head.commit.hexsha == "abcdef123456"
+
+
+# ----------------------------------------
+# Tests for generate_threats
+# ----------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_generate_threats(
     mocker, threat_model_config, test_asset, test_data_flow_report
 ):
-    """
-    Test generation of Threat objects given an asset and a data flow report.
-    """
     mock_result = {
         "threats": [
             {
@@ -197,28 +307,13 @@ async def test_generate_threats(
                 "component_ids": ["72a151d3-0817-4559-a09f-310ffdf8dfbd"],
                 "risk_rating": "Critical",
                 "mitigations": ["Mitigation1", "Mitigation2"],
-            },
-            {
-                "id": "4e8a6a86-76a8-43e1-a70a-7426402b8fd1",
-                "name": "Sample Threat 2",
-                "description": "Description for threat 2",
-                "attack_vector": "Local",
-                "impact_level": "Medium",
-                "stride_category": "Elevation of Privilege",
-                "component_names": ["ComponentX"],
-                "component_ids": ["27f64ece-7e01-490b-87a4-0675ebba4048"],
-                "risk_rating": "High",
-                "mitigations": ["MitigationA"],
-            },
+            }
         ]
     }
 
-    # Create a mock "workflow" object that has an async ainvoke() method
     mock_workflow = AsyncMock()
     mock_workflow.ainvoke.return_value = mock_result
 
-    # Patch get_workflow so that whenever code calls data_flow_agent.get_workflow(),
-    # it actually returns our mock_workflow
     mocker.patch(
         "core.agents.threat_model_agent.ThreatModelAgent.get_workflow",
         return_value=mock_workflow,
@@ -228,17 +323,19 @@ async def test_generate_threats(
         test_asset, test_data_flow_report, threat_model_config
     )
 
-    assert len(threats) == 2
+    assert len(threats) == 1
     assert threats[0].data_flow_report_id == test_data_flow_report.id
+
+
+# ----------------------------------------
+# Tests for generate_threat_model_data
+# ----------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_generate_threat_model_data(
     mocker, threat_model_config, test_asset, test_repos
 ):
-    """
-    Test generation of final threat model data (title, summary, etc.).
-    """
     threat_model = ThreatModel(
         id="4fab6f10-fe7d-444c-a6ff-0cb81a0d8c20",
         name="Test Model",
@@ -250,16 +347,14 @@ async def test_generate_threat_model_data(
         threats=[],
     )
 
-    # Create a mock "workflow" object that has an async ainvoke() method
     mock_result = {
         "title": "Generated Title",
         "summary": "Generated Summary",
     }
+
     mock_workflow = AsyncMock()
     mock_workflow.ainvoke.return_value = mock_result
 
-    # Patch get_workflow so that whenever code calls data_flow_agent.get_workflow(),
-    # it actually returns our mock_workflow
     mocker.patch(
         "core.agents.threat_model_data_agent.ThreatModelDataAgent.get_workflow",
         return_value=mock_workflow,

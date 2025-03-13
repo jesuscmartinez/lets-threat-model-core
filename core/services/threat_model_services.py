@@ -1,8 +1,6 @@
-from re import L, S
-from pydantic import Field, SecretStr
-from core.agents import threat_model_agent
+from pathlib import Path
+from pydantic import SecretStr
 from core.agents.repo_data_flow_agent import DataFlowAgent
-from core.agents.repo_data_flow_agent_config import RepoDataFlowAgentConfig
 from core.agents.threat_model_agent import ThreatModelAgent
 from core.models.dtos.Asset import Asset
 from core.models.dtos.ThreatModel import ThreatModel
@@ -16,21 +14,16 @@ from core.services.reports import (
     generate_mermaid_dataflow_diagram,
 )
 import logging
-import os
 import uuid
 from tempfile import TemporaryDirectory
 from typing import Any, Dict, Optional, Tuple, List
 import asyncio
+from git import Repo as GitRepo
+
 
 from core.services.threat_model_config import ThreatModelConfig
 
 
-# Configure logging
-log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(
-    level=log_level,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
 logger = logging.getLogger(__name__)
 
 
@@ -38,41 +31,46 @@ async def generate_threat_model(
     asset: Asset, repos: List[Repository], config: ThreatModelConfig
 ) -> ThreatModel:
 
+    threat_model = ThreatModel(
+        id=uuid.uuid4(),
+        name="New Threat Model",
+        summary="No summary generated.",
+        asset=asset,
+        repos=repos,
+        data_flow_diagrams=[],
+        data_flow_reports=[],
+        threats=[],
+    )
+
     # Generate data flow reports concurrently
     data_flow_reports = await asyncio.gather(
         *(generate_data_flow(repo, config) for repo in repos)
     )
+    threat_model.data_flow_reports = data_flow_reports
 
-    # Generate threats concurrently
-    threat_lists = await asyncio.gather(
-        *(generate_threats(asset, report, config) for report in data_flow_reports)
-    )
+    if not config.categorize_only:
 
-    # Flatten the list of threats
-    all_threats = [
-        threat for report_threats in threat_lists for threat in report_threats
-    ]
+        # Generate threats concurrently
+        threat_lists = await asyncio.gather(
+            *(generate_threats(asset, report, config) for report in data_flow_reports)
+        )
 
-    diagrams = [generate_mermaid_from_dataflow(report) for report in data_flow_reports]
+        # Flatten the list of threats
+        threat_model.threats = [
+            threat for report_threats in threat_lists for threat in report_threats
+        ]
 
-    # diagrams = diagrams + [
-    #     generate_mermaid_dataflow_diagram(report) for report in data_flow_reports
-    # ]
+        threat_model.data_flow_diagrams = [
+            generate_mermaid_from_dataflow(report) for report in data_flow_reports
+        ]
 
-    threat_model = ThreatModel(
-        id=uuid.uuid4(),
-        name="",
-        summary="",
-        asset=asset,
-        repos=repos,
-        data_flow_diagrams=diagrams,
-        data_flow_reports=data_flow_reports,
-        threats=all_threats,
-    )
+        # diagrams = diagrams + [
+        #     generate_mermaid_dataflow_diagram(report) for report in data_flow_reports
+        # ]
 
-    threat_model_data = await generate_threat_model_data(threat_model, config)
-    threat_model.name = threat_model_data["title"]
-    threat_model.summary = threat_model_data["summary"]
+        threat_model_data = await generate_threat_model_data(threat_model, config)
+        threat_model.name = threat_model_data["title"]
+        threat_model.summary = threat_model_data["summary"]
 
     return threat_model
 
@@ -80,64 +78,167 @@ async def generate_threat_model(
 async def generate_data_flow(
     repository: Repository, config: ThreatModelConfig
 ) -> DataFlowReport:
-    """Generates a DataFlowReport for a given repository."""
+    """Generates a DataFlowReport for a given repository (local or remote)."""
+
+    logger.info(
+        f"🚀 Starting data flow generation for Repository: {repository.name} (ID: {repository.id})"
+    )
+
     try:
+        if repository.local_path:
+            end_state = await process_local_repository(repository, config)
+
+        elif repository.url:
+            end_state = await process_remote_repository(repository, config)
+
+        else:
+            raise ValueError("Repository must have either a local_path or a URL.")
+
+        report = build_data_flow_report(repository, end_state)
         logger.info(
-            f"🚀 Starting data flow generation for Repository: {repository.name} (ID: {repository.id})"
+            f"✅ Finished data flow generation for repository: {repository.name}"
         )
 
-        with TemporaryDirectory() as temp_dir:
-            logger.info(f"📂 Created temporary directory: {temp_dir}")
-
-            data_flow_agent = DataFlowAgent(
-                categorization_model=ChatModelManager.get_model(
-                    provider=config.llm_provider, model=config.categorization_agent_llm
-                ),
-                review_model=ChatModelManager.get_model(
-                    provider=config.llm_provider, model=config.report_agent_llm
-                ),
-                repo_url=repository.url,
-                directory=temp_dir,
-                username=config.username,
-                password=config.pat,
-                config=config,
-            )
-
-            state = {
-                "should_review": set(),
-                "should_not_review": set(),
-                "could_review": set(),
-                "could_not_review": set(),
-                "reviewed": set(),
-                "data_flow_report": AgentDataFlowReport().model_dump(mode="json"),
-            }
-
-            end_state = await data_flow_agent.get_workflow().ainvoke(input=state)
-
-            agent_data_flow = AgentDataFlowReport.model_validate(
-                end_state["data_flow_report"]
-            )
-
-            new_report = DataFlowReport.model_validate(
-                obj={
-                    "id": uuid.uuid4(),
-                    "repository_id": repository.id,
-                    **agent_data_flow.model_dump(exclude_unset=True),
-                    "could_not_review": list(end_state.get("could_not_review", [])),
-                    "could_review": list(end_state.get("could_review", [])),
-                    "should_not_review": list(end_state.get("should_not_review", [])),
-                    "should_review": list(end_state.get("should_review", [])),
-                    "reviewed": list(end_state.get("reviewed", [])),
-                }
-            )
-
-        logger.info(f"✅ Finished data flow generation repository.")
-
-        return new_report
+        return report
 
     except Exception as e:
         logger.exception(f"❌ Error during data flow generation: {str(e)}")
         raise
+
+
+async def process_local_repository(
+    repository: Repository, config: ThreatModelConfig
+) -> dict:
+    """Process a local repository for data flow generation."""
+    repo_path = Path(repository.local_path).resolve()
+
+    if not repo_path.exists() or not repo_path.is_dir():
+        raise ValueError(f"Local repository path does not exist: {repo_path}")
+
+    logger.info(f"📂 Using local repository path: {repo_path}")
+
+    data_flow_agent = create_data_flow_agent(
+        repository=repository,
+        config=config,
+        directory=str(repo_path),
+    )
+
+    state = generate_data_flow_state()
+    return await data_flow_agent.get_workflow().ainvoke(input=state)
+
+
+async def process_remote_repository(
+    repository: Repository, config: ThreatModelConfig
+) -> dict:
+    """Clone and process a remote repository for data flow generation."""
+    with TemporaryDirectory() as temp_dir:
+        logger.info(f"📂 Cloning repository to temporary directory: {temp_dir}")
+
+        # Perform the clone operation
+        clone_repository(
+            username=config.username,
+            pat=config.pat,
+            repo_url=repository.url,
+            temp_dir=temp_dir,
+        )
+
+        data_flow_agent = create_data_flow_agent(
+            repository=repository,
+            config=config,
+            directory=temp_dir,
+        )
+
+        state = generate_data_flow_state()
+        return await data_flow_agent.get_workflow().ainvoke(input=state)
+
+
+def clone_repository(
+    username: str, pat: SecretStr, repo_url: str, temp_dir: str
+) -> Any:
+    """Clone the repository into a temporary directory."""
+    try:
+        logger.info(
+            "🛠️ Initiating repository clone: %s → %s",
+            repo_url,
+            temp_dir,
+        )
+
+        # Use pat.get_secret_value() to retrieve the actual secret string
+        auth_repo_url = f"https://{username}:{pat.get_secret_value()}@{repo_url}"
+
+        repo = GitRepo.clone_from(auth_repo_url, temp_dir)
+        branch = repo.head.reference.name
+        commit = repo.head.commit.hexsha
+
+        logger.info(
+            "✅ Successfully cloned repository: %s (Branch: %s | Commit: %s)",
+            repo_url,
+            branch,
+            commit,
+        )
+
+        return repo
+
+    except Exception as e:
+        logger.error(
+            "❌ Failed to clone repository %s: %s",
+            repo_url,
+            str(e),
+            exc_info=True,
+        )
+        raise e
+
+
+def create_data_flow_agent(
+    repository: Repository,
+    config: ThreatModelConfig,
+    directory: str,
+) -> DataFlowAgent:
+    """Creates a DataFlowAgent for the given repository."""
+    return DataFlowAgent(
+        categorization_model=ChatModelManager.get_model(
+            provider=config.llm_provider, model=config.categorization_agent_llm
+        ),
+        review_model=ChatModelManager.get_model(
+            provider=config.llm_provider, model=config.report_agent_llm
+        ),
+        directory=directory,
+        username=config.username,
+        password=config.pat,
+        config=config,
+    )
+
+
+def generate_data_flow_state() -> dict:
+    """Generates the initial state for the data flow workflow."""
+    return {
+        "should_review": set(),
+        "should_not_review": set(),
+        "could_review": set(),
+        "could_not_review": set(),
+        "reviewed": set(),
+        "data_flow_report": AgentDataFlowReport().model_dump(mode="json"),
+    }
+
+
+def build_data_flow_report(repository: Repository, end_state: dict) -> DataFlowReport:
+    """Builds a DataFlowReport from the final agent end_state."""
+    agent_data_flow = AgentDataFlowReport.model_validate(end_state["data_flow_report"])
+
+    report = DataFlowReport.model_validate(
+        obj={
+            "id": uuid.uuid4(),
+            "repository_id": repository.id,
+            **agent_data_flow.model_dump(exclude_unset=True),
+            "could_not_review": list(end_state.get("could_not_review", [])),
+            "could_review": list(end_state.get("could_review", [])),
+            "should_not_review": list(end_state.get("should_not_review", [])),
+            "should_review": list(end_state.get("should_review", [])),
+            "reviewed": list(end_state.get("reviewed", [])),
+        }
+    )
+
+    return report
 
 
 async def generate_threats(

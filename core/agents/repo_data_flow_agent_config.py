@@ -1,5 +1,5 @@
-from typing import List, Optional
-from pydantic import BaseModel, Field, SecretStr
+from typing import List
+from pydantic import BaseModel, Field
 
 
 class RepoDataFlowAgentConfig(BaseModel):
@@ -37,6 +37,13 @@ class RepoDataFlowAgentConfig(BaseModel):
             "*.git/**",
             "*.gitignore",
             "*.dockerignore",
+            "*.gitmodules",
+            "*.gitattributes",
+            "*.gitkeep",
+            "venv/**",
+            ".venv/**",
+            ".vscode/**",
+            ".idea/**",
         ],
         description="Patterns to exclude from processing",
     )

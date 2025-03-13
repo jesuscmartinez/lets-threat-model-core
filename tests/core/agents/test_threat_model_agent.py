@@ -83,10 +83,10 @@ def test_initialize_converts_uuids(threat_model_agent, threat_graph_state):
 # -----------------------------------------------------------------------------
 
 
-def test_clean_up_converts_ids(threat_model_agent, threat_graph_state):
+def test_finalize_converts_ids(threat_model_agent, threat_graph_state):
     threat_graph_state.threats = [{"mocked_id": "value"}]
 
-    updated_state = threat_model_agent.clean_up(threat_graph_state)
+    updated_state = threat_model_agent.finalize(threat_graph_state)
 
     assert updated_state.threats == [{"converted": "uuid"}]
     threat_model_agent.agent_helper.convert_ids_to_uuids.assert_called()
@@ -227,11 +227,11 @@ async def test_get_workflow_run_threat_model_agent(
     """
     Test that the workflow returned by get_workflow() executes correctly.
 
-    We replace the agent's key workflow methods (initialize, analyze, clean_up)
+    We replace the agent's key workflow methods (initialize, analyze, finalize)
     with dummy implementations that modify the state in predictable ways:
       - initialize: adds a marker key in the asset.
       - analyze: adds a threat.
-      - clean_up: returns the state unchanged.
+      - finalize: returns the state unchanged.
     Then we run the compiled workflow asynchronously using ainvoke and verify
     that the resulting state reflects those modifications.
     """
@@ -257,14 +257,14 @@ async def test_get_workflow_run_threat_model_agent(
         ]
         return new_state
 
-    # Dummy synchronous clean_up that returns the state unchanged.
-    def dummy_clean_up(state):
+    # Dummy synchronous finalize that returns the state unchanged.
+    def dummy_finalize(state):
         return copy.deepcopy(state)
 
     # Patch the agent's methods with our dummy functions.
     threat_model_agent.initialize = dummy_initialize
     threat_model_agent.analyze = dummy_analyze
-    threat_model_agent.clean_up = dummy_clean_up
+    threat_model_agent.finalize = dummy_finalize
 
     # Obtain the compiled workflow. This returns a runnable (compiled) workflow graph.
     workflow = threat_model_agent.get_workflow()

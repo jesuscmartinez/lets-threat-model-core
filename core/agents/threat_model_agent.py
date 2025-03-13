@@ -1,9 +1,11 @@
 import asyncio
 import json
 import logging
-import os
+import asyncio
+import json
+import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from pydantic import BaseModel, Field
 
@@ -16,22 +18,14 @@ from langchain_core.prompts import (
     AIMessagePromptTemplate,
 )
 from langchain_core.output_parsers import JsonOutputParser
-from core.models.dtos.DataFlowReport import AgentDataFlowReport
 from core.models.dtos.Threat import AgentThreat
-from core.models.dtos.Asset import Asset
-from core.models.enums import StrideCategory, Level
-from core.agents.agent_tools import AgentHelper, is_o1
-from langgraph.graph import StateGraph, START, END
-
-# -----------------------------------------------------------------------------
-# Configure Logging
-# -----------------------------------------------------------------------------
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-
-logging.basicConfig(
-    level=LOG_LEVEL,
-    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+from core.agents.agent_tools import (
+    AgentHelper,
+    async_invoke_with_retry,
+    invoke_with_retry,
+    is_o1,
 )
+from langgraph.graph import StateGraph, START, END
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +162,7 @@ class ThreatModelAgent:
 
         return state
 
-    def clean_up(self, state: ThreatGraphStateModel) -> ThreatGraphStateModel:
+    def finalize(self, state: ThreatGraphStateModel) -> ThreatGraphStateModel:
         """Clean up the state by converting internal numbered IDs back to UUIDs."""
         logger.info("Cleaning up threat modeling state...")
 
@@ -272,12 +266,13 @@ class ThreatModelAgent:
                 component_data.get("name", "Unknown Component"),
             )
 
-            result = await chain.ainvoke(
+            result = await async_invoke_with_retry(
+                chain,
                 {
                     "asset": json.dumps(asset),
                     "data_flow_report": json.dumps(report),
                     "component": json.dumps(component_data),
-                }
+                },
             )
 
             if is_o1(self.model):
@@ -338,7 +333,9 @@ class ThreatModelAgent:
         for category, group_list in stride_groups.items():
             try:
                 logger.info("Consolidating threats in category: %s", category)
-                result = chain.invoke(input={"threats": json.dumps(group_list)})
+
+                result = invoke_with_retry(chain, {"threats": json.dumps(group_list)})
+
                 merged_threats = result.get("threats", [])
                 consolidated.extend(merged_threats)
             except Exception as e:
@@ -412,15 +409,15 @@ class ThreatModelAgent:
 
         workflow.add_node("initialize", self.initialize)
         workflow.add_node("analyze", self.analyze)
-        workflow.add_node("clean_up", self.clean_up)
+        workflow.add_node("finalize", self.finalize)
         # If you want to add consolidation step, uncomment and place appropriately:
         # workflow.add_node("consolidate_threats", self.consolidate_threats)
 
         workflow.add_edge(START, "initialize")
         workflow.add_edge("initialize", "analyze")
-        workflow.add_edge("analyze", "clean_up")
+        workflow.add_edge("analyze", "finalize")
         # workflow.add_edge("analyze", "consolidate_threats")
-        # workflow.add_edge("consolidate_threats", "clean_up")
-        workflow.add_edge("clean_up", END)
+        # workflow.add_edge("consolidate_threats", "finalize")
+        workflow.add_edge("finalize", END)
 
         return workflow.compile()
