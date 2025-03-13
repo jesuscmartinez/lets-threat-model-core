@@ -65,8 +65,15 @@ asset:
   data_classification: "CONFIDENTIAL"
 
 repositories:
-  - name: "Juice Shop" 
+  # Example 1: Remote repository (use 'url' only)
+  - name: "Juice Shop Remote"
     url: "github.com/juice-shop/juice-shop"
+    # Do NOT specify local_path when using a remote URL
+
+  # Example 2: Local repository (use 'local_path' only)
+  - name: "Juice Shop Local"
+    local_path: "/repos/my-local-repo"  # This should match the mount point in Docker or the local file system
+    # Do NOT specify url when using a local path
 
 # ----------------------------
 # Configuration
@@ -94,6 +101,12 @@ config:
 - **repositories**: List of repositories associated with the asset.
   - **name**: Name of the repository.
   - **url**: URL of the repository.
+  - **local_path**: Local repository path.
+
+  > **Note:**  
+  > You must specify **either** `url` **or** `local_path` for each repository.  
+  > If both are provided, or neither is provided, the system will raise a validation error.
+
 
 ### Configuration
 - **config**: Configuration settings for the threat modeling process.
@@ -134,8 +147,24 @@ docker build -t threat_model_generator -f Dockerfile .
 ```
 
 #### **Run the Container**
+With remote repository:
 ```sh
-docker run --rm -it -v $(pwd):/app/ --env-file .env threat_model_generator python main.py config.yaml -o threat_model_report.md
+docker run --rm -it \
+  -v "$(pwd)":/app \
+
+  --env-file .env \
+  threat_model_generator \
+  python main.py cli_data/example.config.yaml -o threat_model_report.md
+```
+
+With local repository:
+```sh
+docker run --rm -it \
+  -v "$(pwd)":/app \
+  -v "$(pwd)":/repos/my-local-repo \
+  --env-file .env \
+  threat_model_generator \
+  python main.py cli_data/example.config.yaml -o threat_model_report.md
 ```
 
 #### **Access the Generated Report**

@@ -3,13 +3,14 @@ import os
 import asyncio
 import fnmatch
 import json
+from tempfile import TemporaryDirectory
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from typing import Optional, Set, List, Dict, Any
-import re
+from typing import Set, List, Dict, Any
 
 from pydantic import BaseModel, Field, SecretStr
 from git import Repo as GitRepo
-from tempfile import TemporaryDirectory
 
 # LangChain and local imports
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -22,18 +23,18 @@ from langchain_core.prompts import (
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langgraph.graph import StateGraph, START, END
-from core.agents.agent_tools import AgentHelper, is_o1
+from core.agents.agent_tools import (
+    AgentHelper,
+    async_invoke_with_retry,
+    invoke_with_retry,
+    is_o1,
+    is_rate_limit_error,
+)
 from core.agents.chat_model_manager import ChatModelManager
 from core.agents.repo_data_flow_agent_config import RepoDataFlowAgentConfig
 from core.models.dtos.File import File
 from core.models.dtos.DataFlowReport import AgentDataFlowReport
 
-# Configure logging
-log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(
-    level=log_level,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
 logger = logging.getLogger(__name__)
 
 
@@ -184,7 +185,6 @@ Format Instructions:
 class DataFlowAgent:
     def __init__(
         self,
-        repo_url: str,
         directory: TemporaryDirectory,
         username: str,
         password: SecretStr,
@@ -194,7 +194,6 @@ class DataFlowAgent:
     ):
         self.categorize_model = categorization_model
         self.review_model = review_model
-        self.repo_url = repo_url
         self.directory = directory
         self.agent_helper = AgentHelper()
         self.username = username
@@ -276,43 +275,10 @@ class DataFlowAgent:
         state.data_flow_report = updated
         return state
 
-    def clean_up(self, state: GraphStateModel) -> GraphStateModel:
+    def finalize(self, state: GraphStateModel) -> GraphStateModel:
         """Convert IDs back to original UUID style at end of workflow."""
         converted = self.agent_helper.convert_ids_to_uuids(state.data_flow_report)
         state.data_flow_report = converted
-        return state
-
-    def clone_repository(self, state: GraphStateModel) -> GraphStateModel:
-        """Clone the repository into a temporary directory."""
-        try:
-            repo_url = self.repo_url
-            username = self.username
-            pat = self.password
-
-            logger.info(
-                "🛠️ Initiating repository clone: %s → %s",
-                repo_url,
-                self.directory,
-            )
-
-            repo_url = f"https://{username}:{pat}@{repo_url}"
-            repo = GitRepo.clone_from(repo_url, self.directory)
-            branch = repo.head.reference.name
-            commit = repo.head.commit.hexsha
-            logger.info(
-                "✅ Successfully cloned repository: %s (Branch: %s | Commit: %s)",
-                repo_url,
-                branch,
-                commit,
-            )
-        except Exception as e:
-            logger.error(
-                "❌ Failed to clone repository %s: %s",
-                self.repo_url,
-                str(e),
-                exc_info=True,
-            )
-            raise e
         return state
 
     def rules_categorization(self, state: GraphStateModel) -> GraphStateModel:
@@ -409,13 +375,21 @@ class DataFlowAgent:
         )
 
         # Helper function to process a batch of file paths
+        @retry(
+            retry=retry_if_exception(is_rate_limit_error),
+            wait=wait_exponential(multiplier=1, min=2, max=60),
+            stop=stop_after_attempt(5),
+            reraise=True,
+        )
         async def _batch_categorize_files(batch: List[str]) -> CategorizationResult:
             if not batch:
                 return CategorizationResult(
                     should_review=[], could_review=[], should_not_review=[]
                 )
             file_data = [{"file_path": fp} for fp in batch]
-            result = await chain.ainvoke({"file_paths": json.dumps(file_data)})
+            result = await async_invoke_with_retry(
+                chain, {"file_paths": json.dumps(file_data)}
+            )
             return result
 
         # We'll store the final results here before merging with 'state'
@@ -662,7 +636,6 @@ class DataFlowAgent:
                 # Possibly no files or all were too large.
                 continue
 
-            # Invoke the chain
             try:
 
                 # Serialize file data once
@@ -688,16 +661,14 @@ class DataFlowAgent:
                         token_budget,
                     )
 
-                logging.debug("LLM prompt: %s", full_prompt)
-                # Invoke the chain with pre-serialized file data and report JSON
-                llm_result = chain.invoke(
+                # Async retry wrapper for chain.ainvoke
+                llm_result = invoke_with_retry(
+                    chain,
                     {
                         "file_data": file_data_json,
                         "data_flow_report": report_json,
-                    }
+                    },
                 )
-
-                logging.debug("LLM response: %s", llm_result)
 
                 processed_count += files_in_batch
                 logger.info(
@@ -713,7 +684,9 @@ class DataFlowAgent:
                     ).strip()
                     llm_result = json.loads(cleaned_content)
 
-                # Merge into the existing data_flow_report
+                # Update the data flow report
+                # Some model try to generate valid UUIDs, we need to convert them back
+                llm_result = self.agent_helper.convert_ids_to_uuids(llm_result)
                 state.data_flow_report = llm_result
 
             except Exception as e:
@@ -766,18 +739,16 @@ class DataFlowAgent:
         workflow = StateGraph(GraphStateModel)
 
         workflow.add_node("initialize", self.initialize)
-        workflow.add_node("clone_repository", self.clone_repository)
         workflow.add_node("rules_categorization", self.rules_categorization)
         workflow.add_node("categorize_only", self.categorize_only)
         workflow.add_node("review_files", self.review_files)
         workflow.add_node("categorize_filepaths", self.categorize_files)
         workflow.add_node("done_reviewing", self.done_reviewing)
-        workflow.add_node("clean_up", self.clean_up)
+        workflow.add_node("finalize", self.finalize)
 
         # Edges
         workflow.add_edge(START, "initialize")
-        workflow.add_edge("initialize", "clone_repository")
-        workflow.add_edge("clone_repository", "rules_categorization")
+        workflow.add_edge("initialize", "rules_categorization")
 
         # If we only want categorization, jump straight to "categorize_filepaths"
         # Otherwise, go into "review_files".
@@ -796,9 +767,9 @@ class DataFlowAgent:
             self.done_reviewing,
             {
                 False: "review_files",
-                True: "clean_up",
+                True: "finalize",
             },
         )
-        workflow.add_edge("clean_up", END)
+        workflow.add_edge("finalize", END)
 
         return workflow.compile()

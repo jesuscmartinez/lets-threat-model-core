@@ -1,32 +1,17 @@
-from email.mime import base
-import json
 import logging
-import os
 from typing import Any
 import uuid
-from langchain_core.prompts import (
-    SystemMessagePromptTemplate,
-    HumanMessagePromptTemplate,
-    ChatPromptTemplate,
-)
-from core.agents.chat_model_manager import ChatModelManager
 from langchain.chat_models.base import BaseChatModel
-from langchain_core.runnables import Runnable
-from pydantic import BaseModel
-from typing import Dict
-
-from regex import P
-
-# Configure logging
-log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(
-    level=log_level,
-    format="%(asctime)s - %(levelname)s - %(message)s",
+from tenacity import (
+    retry,
+    retry_if_exception,
+    wait_exponential,
+    stop_after_attempt,
+    before_sleep_log,
 )
-logger = logging.getLogger(__name__)
 
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "")
-STRUCTURED_OUPUT_AGENT_LLM = os.getenv("STRUCTURED_OUPUT_AGENT_LLM", "")
+
+logger = logging.getLogger(__name__)
 
 
 class AgentHelper:
@@ -223,3 +208,42 @@ def is_o1(model: BaseChatModel):
         return True
 
     return False
+
+
+def is_rate_limit_error(exception: Exception) -> bool:
+    # Example for HTTP errors:
+    if hasattr(exception, "status_code") and exception.status_code == 429:
+        return True
+    # OR parse error message or code if it's embedded in exception.args
+    return False
+
+
+# General async retry wrapper for any chain.ainvoke call
+@retry(
+    retry=retry_if_exception(is_rate_limit_error),
+    wait=wait_exponential(multiplier=1, min=2, max=60),  # Exponential backoff
+    stop=stop_after_attempt(5),  # Stop after 5 tries
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,  # Raise exception after all retries fail
+)
+async def async_invoke_with_retry(chain, inputs: dict):
+    # Optionally serialize inputs (if needed)
+    # inputs = {k: json.dumps(v) for k, v in inputs.items()}  # Uncomment if your inputs need serialization
+
+    logger.debug(f"Invoking chain with inputs: {inputs}")
+    return await chain.ainvoke(inputs)
+
+
+@retry(
+    retry=retry_if_exception(is_rate_limit_error),
+    wait=wait_exponential(multiplier=1, min=2, max=60),  # Exponential backoff
+    stop=stop_after_attempt(5),  # Stop after 5 attempts
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,  # Raise the exception if it keeps failing
+)
+def invoke_with_retry(chain, inputs: dict):
+    """
+    Wrapper function to retry chain.invoke() on rate limit (HTTP 429) errors.
+    """
+    logger.debug(f"Invoking chain synchronously with inputs: {inputs}")
+    return chain.invoke(inputs)

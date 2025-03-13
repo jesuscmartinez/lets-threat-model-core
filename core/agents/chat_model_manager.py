@@ -1,6 +1,4 @@
-from ast import mod
 import os
-from dotenv import load_dotenv
 import logging
 from langchain.chat_models import init_chat_model
 from langchain_core.rate_limiters import InMemoryRateLimiter
@@ -8,15 +6,6 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from typing import Optional
 from pydantic import SecretStr
 
-# Load environment variables
-load_dotenv()
-
-# Configure logging
-log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(
-    level=log_level,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
 logger = logging.getLogger(__name__)
 
 # Initialize rate limiter (Exponential backoff happens in retries)
