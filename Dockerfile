@@ -39,3 +39,6 @@ WORKDIR /app
 COPY --from=base /app /app
 
 USER cli_user
+
+ENTRYPOINT ["python", "main.py"]
+CMD ["-o", "threat_model_report.md"]
