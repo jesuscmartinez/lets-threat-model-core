@@ -5,6 +5,82 @@ This script generates a **threat model report** in **Markdown format** from a pr
 
 ![Demo](demo/demo_fast.gif)
 
+## ⚡ Quick Start
+
+If you're eager to get up and running with **Lets Threat Model**, follow these steps to generate your first threat model report in minutes!
+
+### 1️⃣ Run with Docker (Recommended)
+
+The easiest way to start is by using the pre-built Docker image.
+
+#### Run with a Remote Repository
+```sh
+docker run --rm -it \
+  -v "$(pwd)":/app \
+  --env-file .env \
+  ghcr.io/jesuscmartinez/lets-threat-model-core:latest \
+  config.yaml
+```
+
+#### Run with a Local Repository
+```sh
+docker run --rm -it \
+  -v "$(pwd)":/app \
+  -v /path/to/your/local/repo:/repos/my-local-repo \
+  --env-file .env \
+  ghcr.io/jesuscmartinez/lets-threat-model-core:latest \
+  config.yaml
+```
+
+⮕ Replace /path/to/your/local/repo with the path to your local repo.
+
+### 2️⃣ Prepare a YAML Configuration File
+
+Here’s a minimal example config.yaml you can use:
+```yaml
+asset:
+  name: "Sample Asset"
+  description: "A quick-start example asset."
+  internet_facing: False
+  authn_type: "None"
+  data_classification: "CONFIDENTIAL"
+
+repositories:
+  - name: "Sample Repo"
+    url: "github.com/jesuscmartinez/lets-threat-model-core"
+
+config:
+  llm_provider: "openai"
+  context_window: 128000
+  max_output_tokens: 16384
+  categorization_agent_llm: "gpt-4o-mini"
+  review_agent_llm: "gpt-4o-mini"
+  threat_model_agent_llm: "gpt-4o-mini"
+  report_agent_llm: "gpt-4o-mini"
+  categorize_only: True
+```
+
+### 3️⃣ Set Up Environment Variables
+
+Create a .env file in your project root:
+```ini
+OPENAI_API_KEY=your_openai_key
+USERNAME=your_github_username
+PAT=your_github_token
+LOG_LEVEL=INFO
+```
+
+### 4️⃣ View Your Threat Model Report!
+
+After running the container, the threat model report will be saved as:
+
+`threat_model_report.md`
+
+
+🔧 Optional: If you’d rather run locally without Docker, see the Installation and Usage sections below.
+
+---
+
 ## 📌 Features
 - Parses a **YAML configuration file** containing asset and repository details.
 - Generates a **threat model** based on the given data.
@@ -24,6 +100,54 @@ This script generates a **threat model report** in **Markdown format** from a pr
 Ensure you have Python **3.8+** installed, then install dependencies:
 ```sh
 pip install -r requirements.txt
+```
+
+---
+
+## 📄 Usage
+### **1. Prepare a YAML File**
+Create a YAML file with the asset, repositories and config settings. Example:
+```yaml
+asset:
+  name: "Lets Threat Model"
+  description: "An agentic based threat modeling tool."
+  internet_facing: False
+  authn_type: "None"
+  data_classification: "CONFIDENTIAL"
+
+repositories:
+  # Example 1: Remote repository (use 'url' only)
+  - name: "Lets Threat Model Core"
+    url: "github.com/jesuscmartinez/lets-threat-model-core"
+    # Do NOT specify local_path when using a remote URL
+
+  # # Example 2: Local repository (use 'local_path' only)
+  # - name: "Lets Threat Model Core"
+  #   local_path: "/repos/my-local-repo"  # This should match the mount point in Docker or the local file system
+  #   # Do NOT specify url when using a local path
+
+# ----------------------------
+# Configuration
+# ----------------------------
+config:
+  llm_provider: "openai"
+  context_window: 128000
+  max_output_tokens: 16384
+  categorization_agent_llm: "gpt-4o-mini"
+  review_agent_llm: "gpt-4o-mini"
+  threat_model_agent_llm: "gpt-4o-mini"
+  report_agent_llm: "gpt-4o-mini"
+  categorization_agent: "gpt-4o-mini"
+
+# Categorize_only is useful when initially running the tool on a new repository.
+# It focuses solely on categorizing files to determine which ones should be reviewed
+# for threat modeling. After reviewing the file categorization results, you can add
+# patterns to the exclude_patterns list to mark files that should be excluded from review.
+# This helps refine and streamline future analysis by excluding unnecessary files.
+  categorize_only: True
+
+  exclude_patterns:
+    - demo/*
 ```
 
 ### **3. Set Up Environment Variables**
@@ -50,50 +174,13 @@ OPENAI_API_KEY=api_key
 # ----------------------------
 ANTHROPIC_API_KEY=api_key
 ```
-
----
-
-## 📄 Usage
-### **1. Prepare a YAML File**
-Create a YAML file with the asset, repositories and config settings. Example:
-```yaml
-asset:
-  name: "OWASP Juice Shop"
-  description: "An intentionally insecure web application for security training."
-  internet_facing: true
-  authn_type: "Password"
-  data_classification: "CONFIDENTIAL"
-
-repositories:
-  # Example 1: Remote repository (use 'url' only)
-  - name: "Juice Shop Remote"
-    url: "github.com/juice-shop/juice-shop"
-    # Do NOT specify local_path when using a remote URL
-
-  # Example 2: Local repository (use 'local_path' only)
-  - name: "Juice Shop Local"
-    local_path: "/repos/my-local-repo"  # This should match the mount point in Docker or the local file system
-    # Do NOT specify url when using a local path
-
-# ----------------------------
-# Configuration
-# ----------------------------
-config:
-  llm_provider: "openai"
-  context_window: 128000
-  max_output_tokens: 16384
-  categorization_agent_llm: "gpt-4o-mini" # simple task for categorizing files for review
-  review_agent_llm: "o1-mini" # reasoning task of building Data Flow Report
-  threat_model_agent_llm: "o1-mini" # reasoning task of assessing Data Flow Report and identifing Threats
-  report_agent_llm: "gpt-4o-mini" # simple task to help generate report text
-```
 ## Field Descriptions
 
 ### Asset
 - **asset**: Details of the asset to be analyzed.
   - **name**: Name of the asset.
   - **description**: Brief description of the asset.
-  - **internet_facing**: Indicates if the asset is exposed to the internet (`true` or `false`).
+  - **internet_facing**: Indicates if the asset is exposed to the internet (`True` or `False`).
   - **authn_type**: Authentication type used by the asset (e.g., `NONE`, `BASIC`, `OAUTH`).
   - **data_classification**: Classification of data handled by the asset (e.g., `PUBLIC`, `INTERNAL`, `CONFIDENTIAL`).
 
@@ -121,7 +208,7 @@ config:
   - **review_token_buffer**: Token buffer ratio for review.
   - **categorize_max_file_in_batch**: Maximum number of files to categorize in a batch.
   - **categorize_token_buffer**: Token buffer ratio for categorization.
-  - **categorize_only**: Flag to indicate if only categorization should be performed (`true` or `false`).
+  - **categorize_only**: Flag to indicate if only categorization should be performed (`True` or `False`).
   - **completion_threshold**: Threshold for completion.
 
 ### Patterns
@@ -135,35 +222,21 @@ Execute the script using the following command:
 python -m main config.yaml
 ```
 
-**Optional:** Specify an output file:
-```sh
-python -m main config.yaml -o threat_model_report.mdd
-```
-
 ### **3. Run the Script via Docker**
 #### **Build the Docker Image**
 ```sh
-docker build -t threat_model_generator -f Dockerfile . 
+docker build -t lets_threat_model -f Dockerfile .
 ```
 
 #### **Run the Container**
 With remote repository:
 ```sh
-docker run --rm -it \
-  -v "$(pwd)":/app \
-  --env-file .env \
-  threat_model_generator \
-  python main.py config.yaml -o threat_model_report.md
+docker run --rm -it -v "$(pwd)":/app --env-file .env lets_threat_model config.yaml
 ```
 
 With local repository:
 ```sh
-docker run --rm -it \
-  -v "$(pwd)":/app \
-  -v "$(pwd)":/repos/my-local-repo \
-  --env-file .env \
-  threat_model_generator \
-  python main.py config.yaml -o threat_model_report.md
+docker run --rm -it -v "$(pwd)":/app -v my-local-repo:/repos/my-local-repo --env-file .env lets_threat_model config.yaml
 ```
 
 #### **Access the Generated Report**
