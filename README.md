@@ -65,8 +65,8 @@ config:
 Create a .env file in your project root:
 ```ini
 OPENAI_API_KEY=your_openai_key
-USERNAME=your_github_username
-PAT=your_github_token
+GITHUB_USERNAME=your_github_username
+GITHUB_PAT=your_github_token
 LOG_LEVEL=INFO
 ```
 
@@ -161,8 +161,8 @@ LOG_LEVEL=INFO
 # ----------------------------
 # GITHUB Configuration
 # ----------------------------
-USERNAME=username
-PAT=personal_access_token
+GITHUB_USERNAME=username
+GITHUB_PAT=personal_access_token
 
 # ----------------------------
 # OPENAI Configuration

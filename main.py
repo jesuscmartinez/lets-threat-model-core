@@ -127,7 +127,7 @@ def build_threat_model_config(
     return config
 
 
-async def main(yaml_file: str, output_file: str):
+async def main(yaml_file: str, output_file: str, json_output_file: str = None):
     """Loads asset and repositories from YAML and generates a threat model report in Markdown format."""
     try:
         config = load_yaml_config(yaml_file)
@@ -150,17 +150,15 @@ async def main(yaml_file: str, output_file: str):
         # Generate and save the report
         markdown_report = generate_threat_model_report(threat_model)
 
-        markdown_report = (
-            markdown_report
-            + "\n\nDEBUG:\n"
-            + f"⚙️ Threat Model Configuration:\n{threat_model_config.model_dump_json(indent=4)}"
-            + f"\n\n📝 Generated Threat Model:\n{threat_model.model_dump_json(indent=4)}"
-        )
-
         output_path = Path(output_file).expanduser().resolve(strict=False)
         output_path.write_text(markdown_report)
 
         logger.info(f"✅ Threat model report generated and saved to: {output_path}")
+
+        if json_output_file:
+            json_output_path = Path(json_output_file).expanduser().resolve(strict=False)
+            json_output_path.write_text(threat_model.model_dump_json(indent=4))
+            logger.info(f"✅ Threat model JSON saved to: {json_output_path}")
 
     except Exception as e:
         logger.error(f"❌ Error generating threat model: {e}", exc_info=True)
@@ -181,6 +179,11 @@ if __name__ == "__main__":
         type=str,
         default="threat_model_report.md",
         help="Output Markdown file",
+    )
+    parser.add_argument(
+        "--json-output",
+        type=str,
+        help="Optional: Output file for the raw threat model JSON.",
     )
     args = parser.parse_args()
 
