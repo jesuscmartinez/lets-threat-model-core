@@ -175,7 +175,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "config_file",
+        "--config-file",
         type=str,
         help="""\
     📄 Path to your YAML configuration file.
@@ -209,4 +209,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    asyncio.run(main(args.yaml_file, args.output, args.json_output))
+    asyncio.run(main(args.config_file, args.markdown_output, args.json_output))
