@@ -137,7 +137,6 @@ config:
   review_agent_llm: "gpt-4o-mini"
   threat_model_agent_llm: "gpt-4o-mini"
   report_agent_llm: "gpt-4o-mini"
-  categorization_agent: "gpt-4o-mini"
 
 # Categorize_only is useful when initially running the tool on a new repository.
 # It focuses solely on categorizing files to determine which ones should be reviewed
