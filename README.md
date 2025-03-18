@@ -16,20 +16,20 @@ The easiest way to start is by using the pre-built Docker image.
 #### Run with a Remote Repository
 ```sh
 docker run --rm -it \
-  -v "$(pwd)":/app \
+  -v "$(pwd)":/data \
   --env-file .env \
   ghcr.io/jesuscmartinez/lets-threat-model-core:latest \
-  config.yaml
+  /data/config.yaml
 ```
 
 #### Run with a Local Repository
 ```sh
 docker run --rm -it \
-  -v "$(pwd)":/app \
+  -v "$(pwd)":/data \
   -v /path/to/your/local/repo:/repos/my-local-repo \
   --env-file .env \
   ghcr.io/jesuscmartinez/lets-threat-model-core:latest \
-  config.yaml
+  /data/config.yaml
 ```
 
 ⮕ Replace /path/to/your/local/repo with the path to your local repo.
