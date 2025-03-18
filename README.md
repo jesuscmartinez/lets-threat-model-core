@@ -19,7 +19,7 @@ docker run --rm -it \
   -v "$(pwd)":/data \
   --env-file .env \
   ghcr.io/jesuscmartinez/lets-threat-model-core:latest \
-  /data/config.yaml
+  --config-file /data/config.yaml
 ```
 
 #### Run with a Local Repository
@@ -29,7 +29,7 @@ docker run --rm -it \
   -v /path/to/your/local/repo:/repos/my-local-repo \
   --env-file .env \
   ghcr.io/jesuscmartinez/lets-threat-model-core:latest \
-  /data/config.yaml
+  --config-file /data/config.yaml
 ```
 
 ⮕ Replace /path/to/your/local/repo with the path to your local repo.
@@ -218,7 +218,7 @@ ANTHROPIC_API_KEY=api_key
 ### **2. Run the Script**
 Execute the script using the following command:
 ```sh
-python -m main config.yaml
+python -m main --config-file config.yaml
 ```
 
 ### **3. Run the Script via Docker**
@@ -230,12 +230,12 @@ docker build -t lets_threat_model -f Dockerfile .
 #### **Run the Container**
 With remote repository:
 ```sh
-docker run --rm -it --env-file .env -v "$(pwd)":/app lets_threat_model config.yaml
+docker run --rm -it --env-file .env -v "$(pwd)":/app lets_threat_model --config-file config.yaml
 ```
 
 With local repository:
 ```sh
-docker run --rm -it --env-file .env -v "$(pwd)":/app -v "$(pwd)":/repos/my-local-repo lets_threat_model config.yaml
+docker run --rm -it --env-file .env -v "$(pwd)":/app -v "$(pwd)":/repos/my-local-repo lets_threat_model --config-file config.yaml
 ```
 
 #### **Access the Generated Report**
@@ -271,7 +271,7 @@ Threat Model Report...
 To enable detailed logging, set `LOG_LEVEL` to `DEBUG`:
 ```sh
 export LOG_LEVEL=DEBUG
-python main.py input_data.yaml
+python main.py --config-file config.yaml
 ```
 
 ### **Run with a Virtual Environment**
