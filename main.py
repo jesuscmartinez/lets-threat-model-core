@@ -166,25 +166,47 @@ async def main(yaml_file: str, output_file: str, json_output_file: str = None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Generate a threat model from a YAML file and output as Markdown."
+        description="""\
+    🛡️  Lets Threat Model Core - Automated Threat Modeling Tool
+
+    Generate a threat model from a YAML configuration file. The tool analyzes your assets and repositories, 
+    and outputs a structured threat model report in Markdown. Optionally, you can export the raw threat model data as JSON.
+    """
     )
+
     parser.add_argument(
-        "yaml_file",
+        "config_file",
         type=str,
-        help="Path to the YAML file containing asset and repository details.",
+        help="""\
+    📄 Path to your YAML configuration file.
+
+    This file should include the asset details, repository information, and tool configuration. 
+    Example: `config/my-app-config.yaml`
+    """,
     )
+
     parser.add_argument(
-        "-o",
-        "--output",
+        "--markdown-output",
         type=str,
         default="threat_model_report.md",
-        help="Output Markdown file",
+        help="""\
+    📝 Path to save the generated threat model report in Markdown format.
+
+    Default: `threat_model_report.md`
+    """,
     )
+
     parser.add_argument(
         "--json-output",
         type=str,
-        help="Optional: Output file for the raw threat model JSON.",
+        help="""\
+    📦 (Optional) Path to save the raw threat model data in JSON format.
+
+    Useful if you want to process the threat model programmatically or integrate with other tools.
+    Example: `reports/threat_model.json`
+    """,
     )
+
     args = parser.parse_args()
 
-    asyncio.run(main(args.yaml_file, args.output))
+    asyncio.run(main(args.yaml_file, args.output, args.json_output))
