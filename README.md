@@ -57,7 +57,6 @@ config:
   review_agent_llm: "gpt-4o-mini"
   threat_model_agent_llm: "gpt-4o-mini"
   report_agent_llm: "gpt-4o-mini"
-  categorize_only: True
 ```
 
 ### 3️⃣ Set Up Environment Variables
