@@ -230,12 +230,12 @@ docker build -t lets_threat_model -f Dockerfile .
 #### **Run the Container**
 With remote repository:
 ```sh
-docker run --rm -it -v "$(pwd)":/app --env-file .env lets_threat_model config.yaml
+docker run --rm -it --env-file .env -v "$(pwd)":/app lets_threat_model config.yaml
 ```
 
 With local repository:
 ```sh
-docker run --rm -it -v "$(pwd)":/app -v my-local-repo:/repos/my-local-repo --env-file .env lets_threat_model config.yaml
+docker run --rm -it --env-file .env -v "$(pwd)":/app -v "$(pwd)":/repos/my-local-repo lets_threat_model config.yaml
 ```
 
 #### **Access the Generated Report**
