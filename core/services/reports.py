@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import re
 from core.models.dtos.DataFlowReport import DataFlowReport
 from core.models.dtos.ThreatModel import ThreatModel
 from core.models.dtos.DataFlowReport import DataFlow
@@ -123,16 +124,14 @@ def generate_threat_model_report(threat_model: ThreatModel) -> str:
         report += f"- **Description:** {repo.description}\n"
         report += f"- **URL:** {repo.url}\n"
 
-    # Data Flow Diagrams
-    report += "## Data Flow Diagrams\n"
-    for i, diagram in enumerate(threat_model.data_flow_diagrams, 1):
-        report += f"### Diagram {i}\n```\n{diagram}\n```\n\n"
-
     # Data Flow Reports
     report += "## Data Flow Reports\n"
     for i, report_data in enumerate(threat_model.data_flow_reports, 1):
         report += f"### Report {i}\n"
         report += f"**Overview:** {report_data.overview}\n\n"
+
+        diagram = generate_mermaid_from_dataflow(report_data)
+        report += f"### Diagram {i}\n```mermaid\n{diagram}\n```\n\n"
 
         # External Entities
         if report_data.external_entities:

@@ -12,7 +12,7 @@ class CreateThreatModel(BaseModel):
     Represents the input schema for creating a new threat model.
 
     This model captures all necessary information to define a threat model,
-    including the name, summary, associated assets, repositories, data flow diagrams,
+    including the name, summary, associated assets, repositories,
     data flow reports, and identified threats.
     """
 
@@ -20,7 +20,6 @@ class CreateThreatModel(BaseModel):
     summary: str
     asset: Asset
     repos: List[Repository]
-    data_flow_diagrams: List[str]
     data_flow_reports: List[DataFlowReport]
     threats: List[Threat]
 
