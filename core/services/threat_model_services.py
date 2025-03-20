@@ -60,10 +60,6 @@ async def generate_threat_model(
             threat for report_threats in threat_lists for threat in report_threats
         ]
 
-        threat_model.data_flow_diagrams = [
-            generate_mermaid_from_dataflow(report) for report in data_flow_reports
-        ]
-
         # diagrams = diagrams + [
         #     generate_mermaid_dataflow_diagram(report) for report in data_flow_reports
         # ]
