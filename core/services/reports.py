@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-import re
 from core.models.dtos.DataFlowReport import DataFlowReport
 from core.models.dtos.ThreatModel import ThreatModel
 from core.models.dtos.DataFlowReport import DataFlow
