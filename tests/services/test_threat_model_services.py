@@ -1,15 +1,19 @@
+import uuid
 import pytest
-from uuid import UUID
+import json
+from uuid import uuid4, UUID
 from unittest.mock import patch, AsyncMock, MagicMock
+
 from pydantic import SecretStr
 
+# Import models and services from your project.
 from core.models.dtos.Asset import Asset
 from core.models.dtos.Repository import Repository
 from core.models.dtos.ThreatModel import ThreatModel
 from core.models.dtos.DataFlowReport import DataFlowReport
 from core.models.dtos.Threat import Threat
+from core.models.enums import DataClassification, AuthnType, StrideCategory, Level
 from core.services.threat_model_config import ThreatModelConfig
-
 from core.services.threat_model_services import (
     generate_threat_model,
     generate_data_flow,
@@ -19,9 +23,10 @@ from core.services.threat_model_services import (
     clone_repository,
 )
 
-# ----------------------------------------
+
+# -------------------------------
 # Fixtures
-# ----------------------------------------
+# -------------------------------
 
 
 @pytest.fixture
@@ -48,21 +53,24 @@ def threat_model_config() -> ThreatModelConfig:
 @pytest.fixture
 def test_asset() -> Asset:
     return Asset(
-        id="4fab6f10-fe7d-444c-a6ff-0cb81a0d8cf1",
+        id=UUID("4fab6f10-fe7d-444c-a6ff-0cb81a0d8cf1"),
         name="Test Asset",
+        description="Test asset description",
         internet_facing=False,
-        authn_type="None",
-        data_classification="Public",
+        authn_type=AuthnType.NONE,
+        data_classification=DataClassification.PUBLIC,
     )
 
 
 @pytest.fixture
 def test_repos(test_asset) -> list[Repository]:
+    # Provide only URL or local_path (not both) to avoid validation errors.
     return [
         Repository(
-            id="4fab6f10-fe7d-444c-a6ff-0cb81a0d8cf2",
+            id=UUID("4fab6f10-fe7d-444c-a6ff-0cb81a0d8cf2"),
             name="Test Repo",
-            url="http://test.repo",
+            description="A test repository",
+            url="https://example.com/repo",
             asset_id=test_asset.id,
         )
     ]
@@ -70,20 +78,24 @@ def test_repos(test_asset) -> list[Repository]:
 
 @pytest.fixture
 def test_data_flow_report(test_repos) -> DataFlowReport:
+    # Create a minimal DataFlowReport; adjust fields as needed.
     return DataFlowReport(
-        id="4fab6f10-fe7d-444c-a6ff-0cb81a0d8cf5",
+        id=uuid.UUID("57a20a0f-f0d1-4c83-a1fb-7c195ad44bef"),
         repository_id=test_repos[0].id,
-        overview="Sample overview of data flow",
+        overview="Test description",
         external_entities=[],
         processes=[],
-        data_stores=[],
-        trust_boundaries=[],
+        should_review=[],
+        reviewed=[],
+        could_review=[],
+        should_not_review=[],
+        could_not_review=[],
     )
 
 
-# ----------------------------------------
+# -------------------------------
 # Tests for generate_threat_model
-# ----------------------------------------
+# -------------------------------
 
 
 @pytest.mark.asyncio
@@ -102,28 +114,33 @@ async def test_generate_threat_model(
     ):
         # Setup mock returns
         mocked_data_flow_report = DataFlowReport(
-            id="4fab6f10-fe7d-444c-a6ff-0cb81a0d8cf3",
+            id=uuid.UUID("57a20a0f-f0d1-4c83-a1fb-7c195ad44be4"),
             repository_id=test_repos[0].id,
             overview="overview",
             external_entities=[],
             processes=[],
             data_stores=[],
             trust_boundaries=[],
+            should_review=[],
+            reviewed=[],
+            could_review=[],
+            should_not_review=[],
+            could_not_review=[],
         )
         mock_generate_data_flow.return_value = mocked_data_flow_report
 
         mock_generate_threats.return_value = [
             Threat(
-                id="90537b65-2f32-48ca-8fc2-389f902f55c2",
+                id=UUID("90537b65-2f32-48ca-8fc2-389f902f55c2"),
                 data_flow_report_id=mocked_data_flow_report.id,
                 name="Test Threat",
                 description="Test Description",
-                stride_category="Spoofing",
+                stride_category=StrideCategory.SPOOFING,
                 component_names=["Component1"],
-                component_ids=["comp1"],
+                component_ids=[UUID("a20df271-5105-4768-9a04-b9fc8103dc0b")],
                 attack_vector="Network",
-                impact_level="High",
-                risk_rating="Critical",
+                impact_level=Level.HIGH,
+                risk_rating=Level.CRITICAL,
                 mitigations=["Mitigation1"],
             )
         ]
@@ -145,9 +162,9 @@ async def test_generate_threat_model(
         assert len(threat_model.threats) == 1
 
 
-# ----------------------------------------
-# Tests for generate_data_flow (local repo)
-# ----------------------------------------
+# -------------------------------
+# Test for generate_data_flow (local repository)
+# -------------------------------
 
 
 @pytest.mark.asyncio
@@ -155,15 +172,14 @@ async def test_generate_data_flow_local_repo(mocker, threat_model_config):
     """
     Test generate_data_flow when processing a local repository.
     """
-
     local_repo = Repository(
-        id="4fab6f10-fe7d-444c-a6ff-0cb81a0d8cf2",
+        id=uuid.UUID("4fab6f10-fe7d-444c-a6ff-0cb81a0d8cf2"),
         name="Test Local Repo",
         local_path="/path/to/local/repo",
-        asset_id="4fab6f10-fe7d-444c-a6ff-0cb81a0d8cf1",
+        asset_id=uuid.UUID("4fab6f10-fe7d-444c-a6ff-0cb81a0d8cf1"),
     )
 
-    # Mock Path.exists() and Path.is_dir() to return True
+    # Patch Path.exists() and Path.is_dir() to return True
     mocker.patch("core.services.threat_model_services.Path.exists", return_value=True)
     mocker.patch("core.services.threat_model_services.Path.is_dir", return_value=True)
 
@@ -189,18 +205,18 @@ async def test_generate_data_flow_local_repo(mocker, threat_model_config):
     assert data_flow_report.repository_id == local_repo.id
 
 
-# ----------------------------------------
-# Tests for process_remote_repository
-# ----------------------------------------
+# -------------------------------
+# Test for process_remote_repository
+# -------------------------------
 
 
 @pytest.mark.asyncio
 async def test_process_remote_repository_calls_clone_repository(mocker):
     repository = Repository(
-        id="4fab6f10-fe7d-444c-a6ff-0cb81a0d8cf2",
+        id=uuid.UUID("4fab6f10-fe7d-444c-a6ff-0cb81a0d8cf2"),
         name="Test Remote Repo",
         url="https://github.com/example/repo.git",
-        asset_id="4fab6f10-fe7d-444c-a6ff-0cb81a0d8cf1",
+        asset_id=uuid.UUID("4fab6f10-fe7d-444c-a6ff-0cb81a0d8cf1"),
     )
 
     config = ThreatModelConfig(
@@ -235,7 +251,6 @@ async def test_process_remote_repository_calls_clone_repository(mocker):
         "could_not_review": [],
         "should_not_review": [],
     }
-
     mock_agent.get_workflow.return_value = mock_workflow
 
     mock_create_agent = mocker.patch(
@@ -253,9 +268,9 @@ async def test_process_remote_repository_calls_clone_repository(mocker):
     assert "data_flow_report" in result
 
 
-# ----------------------------------------
+# -------------------------------
 # Test for clone_repository (GitHub clone)
-# ----------------------------------------
+# -------------------------------
 
 
 def test_clone_repository_with_github(mocker):
@@ -271,7 +286,6 @@ def test_clone_repository_with_github(mocker):
     mock_repo = MagicMock()
     mock_repo.head.reference.name = "main"
     mock_repo.head.commit.hexsha = "abcdef123456"
-
     mock_git_repo.return_value = mock_repo
 
     # Act
@@ -280,14 +294,13 @@ def test_clone_repository_with_github(mocker):
     # Assert
     expected_url = f"https://{username}:{pat.get_secret_value()}@{github_repo_url}"
     mock_git_repo.assert_called_once_with(expected_url, temp_dir)
-
     assert result.head.reference.name == "main"
     assert result.head.commit.hexsha == "abcdef123456"
 
 
-# ----------------------------------------
-# Tests for generate_threats
-# ----------------------------------------
+# -------------------------------
+# Test for generate_threats
+# -------------------------------
 
 
 @pytest.mark.asyncio
@@ -313,7 +326,6 @@ async def test_generate_threats(
 
     mock_workflow = AsyncMock()
     mock_workflow.ainvoke.return_value = mock_result
-
     mocker.patch(
         "core.agents.threat_model_agent.ThreatModelAgent.get_workflow",
         return_value=mock_workflow,
@@ -322,14 +334,13 @@ async def test_generate_threats(
     threats = await generate_threats(
         test_asset, test_data_flow_report, threat_model_config
     )
-
     assert len(threats) == 1
     assert threats[0].data_flow_report_id == test_data_flow_report.id
 
 
-# ----------------------------------------
-# Tests for generate_threat_model_data
-# ----------------------------------------
+# -------------------------------
+# Test for generate_threat_model_data
+# -------------------------------
 
 
 @pytest.mark.asyncio
@@ -337,12 +348,11 @@ async def test_generate_threat_model_data(
     mocker, threat_model_config, test_asset, test_repos
 ):
     threat_model = ThreatModel(
-        id="4fab6f10-fe7d-444c-a6ff-0cb81a0d8c20",
+        id=uuid.UUID("4fab6f10-fe7d-444c-a6ff-0cb81a0d8c20"),
         name="Test Model",
         summary="Test Summary",
         asset=test_asset,
         repos=test_repos,
-        data_flow_diagrams=[],
         data_flow_reports=[],
         threats=[],
     )
@@ -354,7 +364,6 @@ async def test_generate_threat_model_data(
 
     mock_workflow = AsyncMock()
     mock_workflow.ainvoke.return_value = mock_result
-
     mocker.patch(
         "core.agents.threat_model_data_agent.ThreatModelDataAgent.get_workflow",
         return_value=mock_workflow,
@@ -363,6 +372,5 @@ async def test_generate_threat_model_data(
     threat_model_data = await generate_threat_model_data(
         threat_model, threat_model_config
     )
-
     assert threat_model_data["title"] == "Generated Title"
     assert threat_model_data["summary"] == "Generated Summary"

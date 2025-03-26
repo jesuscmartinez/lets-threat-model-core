@@ -1,9 +1,19 @@
 from datetime import datetime, timezone
+from enum import Enum
+import json
 from core.models.dtos.DataFlowReport import DataFlowReport
 from core.models.dtos.ThreatModel import ThreatModel
 from core.models.dtos.DataFlowReport import DataFlow
 from typing import Dict, Set
 from collections import defaultdict
+
+from typing import List
+from datetime import datetime
+from uuid import UUID
+
+from typing import List
+from uuid import uuid4
+from core.models.dtos.Threat import Threat
 
 
 def generate_mermaid_from_dataflow(dataflow_report: DataFlowReport) -> str:
@@ -51,51 +61,51 @@ def generate_mermaid_from_dataflow(dataflow_report: DataFlowReport) -> str:
     return "\n".join(mermaid)  # Returns the Mermaid diagram as a string
 
 
-def generate_dot_from_dataflow(dataflow_report: DataFlowReport) -> str:
-    """
-    Generate a DOT representation of the data flow from a DataFlowReport.
+# def generate_dot_from_dataflow(dataflow_report: DataFlowReport) -> str:
+#     """
+#     Generate a DOT representation of the data flow from a DataFlowReport.
 
-    :param dataflow_report: A DataFlowReport instance.
-    :return: DOT format string representation of the data flow diagram.
-    """
-    dot = Digraph(comment="Data Flow Diagram")
+#     :param dataflow_report: A DataFlowReport instance.
+#     :return: DOT format string representation of the data flow diagram.
+#     """
+#     dot = Digraph(comment="Data Flow Diagram")
 
-    # Mapping of components by ID
-    component_map = {}
+#     # Mapping of components by ID
+#     component_map = {}
 
-    # Add nodes (External Entities, Processes, Data Stores)
-    for entity in dataflow_report.external_entities:
-        dot.node(
-            str(entity.id), f"External Entity: {entity.name}", shape="parallelogram"
-        )
-        component_map[entity.id] = entity
+#     # Add nodes (External Entities, Processes, Data Stores)
+#     for entity in dataflow_report.external_entities:
+#         dot.node(
+#             str(entity.id), f"External Entity: {entity.name}", shape="parallelogram"
+#         )
+#         component_map[entity.id] = entity
 
-    for process in dataflow_report.processes:
-        dot.node(str(process.id), f"Process: {process.name}", shape="box")
-        component_map[process.id] = process
+#     for process in dataflow_report.processes:
+#         dot.node(str(process.id), f"Process: {process.name}", shape="box")
+#         component_map[process.id] = process
 
-    for store in dataflow_report.data_stores:
-        dot.node(str(store.id), f"Data Store: {store.name}", shape="cylinder")
-        component_map[store.id] = store
+#     for store in dataflow_report.data_stores:
+#         dot.node(str(store.id), f"Data Store: {store.name}", shape="cylinder")
+#         component_map[store.id] = store
 
-    # Add Trust Boundaries (Subgraphs)
-    for boundary in dataflow_report.trust_boundaries:
-        with dot.subgraph(name=f"cluster_{boundary.id}") as sub:
-            sub.attr(label=boundary.name, color="blue")
-            for component_id in boundary.component_ids:
-                if component_id in component_map:
-                    sub.node(str(component_id))
+#     # Add Trust Boundaries (Subgraphs)
+#     for boundary in dataflow_report.trust_boundaries:
+#         with dot.subgraph(name=f"cluster_{boundary.id}") as sub:
+#             sub.attr(label=boundary.name, color="blue")
+#             for component_id in boundary.component_ids:
+#                 if component_id in component_map:
+#                     sub.node(str(component_id))
 
-    # Add edges (Data Flows)
-    for node in (
-        dataflow_report.external_entities
-        + dataflow_report.processes
-        + dataflow_report.data_stores
-    ):
-        for flow in node.data_flows:
-            dot.edge(str(node.id), str(flow.destination_id), label=flow.data_type)
+#     # Add edges (Data Flows)
+#     for node in (
+#         dataflow_report.external_entities
+#         + dataflow_report.processes
+#         + dataflow_report.data_stores
+#     ):
+#         for flow in node.data_flows:
+#             dot.edge(str(node.id), str(flow.destination_id), label=flow.data_type)
 
-    return dot.source  # Returns the DOT string representation
+#     return dot.source  # Returns the DOT string representation
 
 
 def generate_threat_model_report(threat_model: ThreatModel) -> str:

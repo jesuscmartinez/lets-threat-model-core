@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import json
 import logging
 import os
 from uuid import UUID, uuid4
@@ -7,19 +8,18 @@ from pathlib import Path
 import yaml
 from pydantic import SecretStr
 from dotenv import load_dotenv
+from typing import Optional
 
 # Import Models and Services
 from core.models.dtos.ThreatModel import ThreatModel
 from core.models.enums import AuthnType, DataClassification
 from core.models.dtos.Asset import Asset
 from core.models.dtos.Repository import Repository
+from core.services.sarif import SarifGenerator
 from core.services.threat_model_config import ThreatModelConfig
 from core.services.threat_model_services import generate_threat_model
 from core.services.reports import generate_threat_model_report
 
-# Load environment variables
-from dotenv import load_dotenv
-from pathlib import Path
 
 load_dotenv()
 # Get LOG_LEVEL from env or default to INFO
@@ -127,7 +127,12 @@ def build_threat_model_config(
     return config
 
 
-async def main(yaml_file: str, output_file: str, json_output_file: str = None):
+async def main(
+    yaml_file: str,
+    output_file: str,
+    json_output_file: Optional[str] = None,
+    sarif_output_file: Optional[str] = None,
+):
     """Loads asset and repositories from YAML and generates a threat model report in Markdown format."""
     try:
         config = load_yaml_config(yaml_file)
@@ -159,6 +164,16 @@ async def main(yaml_file: str, output_file: str, json_output_file: str = None):
             json_output_path = Path(json_output_file).expanduser().resolve(strict=False)
             json_output_path.write_text(threat_model.model_dump_json(indent=4))
             logger.info(f"✅ Threat model JSON saved to: {json_output_path}")
+
+        if sarif_output_file:
+            sarif_output_path = (
+                Path(sarif_output_file).expanduser().resolve(strict=False)
+            )
+            generator = SarifGenerator(threat_model)
+            sarif_log = generator.generate_sarif_log()
+            sarif_json = json.dumps(sarif_log, indent=4)
+            sarif_output_path.write_text(sarif_json)
+            logger.info(f"✅ Threat model SARIF saved to: {sarif_output_path}")
 
     except Exception as e:
         logger.error(f"❌ Error generating threat model: {e}", exc_info=True)
@@ -207,6 +222,21 @@ if __name__ == "__main__":
     """,
     )
 
+    parser.add_argument(
+        "--sarif-output",
+        type=str,
+        help="""\
+    📄 (Optional) Path to save the SARIF threat model report.
+
+    The report will be generated in SARIF (Static Analysis Results Interchange Format), which is useful for integrating with security analysis tools.
+    Example: `reports/threat_model.sarif`
+    """,
+    )
+
     args = parser.parse_args()
 
-    asyncio.run(main(args.config_file, args.markdown_output, args.json_output))
+    asyncio.run(
+        main(
+            args.config_file, args.markdown_output, args.json_output, args.sarif_output
+        )
+    )
