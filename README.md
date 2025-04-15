@@ -71,10 +71,11 @@ LOG_LEVEL=INFO
 
 ### 4️⃣ View Your Threat Model Report!
 
-After running the container, the threat model report will be saved as:
+After running the container, reports will be generated only if you specify the corresponding output flags:
 
-`threat_model_report.md`
-
+- `--markdown-output` → Markdown format
+- `--json-output` → Structured JSON
+- `--sarif-output` → SARIF format for integration with code scanning tools
 
 🔧 Optional: If you’d rather run locally without Docker, see the Installation and Usage sections below.
 
@@ -83,7 +84,7 @@ After running the container, the threat model report will be saved as:
 ## 📌 Features
 - Parses a **YAML configuration file** containing asset and repository details.
 - Generates a **threat model** based on the given data.
-- Saves the output as a **Markdown report**.
+- Supports output in **Markdown, JSON, and SARIF formats** via command-line flags.
 - Provides **logging and error handling** for a smooth execution.
 
 ---
@@ -215,32 +216,42 @@ ANTHROPIC_API_KEY=api_key
 
 
 ### **2. Run the Script**
-Execute the script using the following command:
+You can specify the output format paths using optional flags:
 ```sh
-python -m main --config-file config.yaml
+python -m main \
+  --config-file config.yaml \
+  --markdown-output reports/threat_model_report.md \
+  --json-output reports/threat_model_report.json \
+  --sarif-output reports/threat_model_report.sarif
 ```
 
 ### **3. Run the Script via Docker**
-#### **Build the Docker Image**
-```sh
-docker build -t lets_threat_model -f Dockerfile .
-```
-
 #### **Run the Container**
 With remote repository:
 ```sh
-docker run --rm -it --env-file .env -v "$(pwd)":/app lets_threat_model --config-file config.yaml
+docker run --rm -it --env-file .env -v "$(pwd)":/app lets_threat_model \
+  --config-file config.yaml \
+  --markdown-output /app/reports/threat_model_report.md \
+  --json-output /app/reports/threat_model_report.json \
+  --sarif-output /app/reports/threat_model_report.sarif
 ```
 
 With local repository:
 ```sh
-docker run --rm -it --env-file .env -v "$(pwd)":/app -v "$(pwd)":/repos/my-local-repo lets_threat_model --config-file config.yaml
+docker run --rm -it --env-file .env \
+  -v "$(pwd)":/app \
+  -v "$(pwd)":/repos/my-local-repo \
+  lets_threat_model \
+  --config-file config.yaml \
+  --markdown-output /app/reports/threat_model_report.md \
+  --json-output /app/reports/threat_model_report.json \
+  --sarif-output /app/reports/threat_model_report.sarif
 ```
 
 #### **Access the Generated Report**
 The Markdown report will be available on your host machine:
 ```sh
-cat threat_model_report.md
+cat reports/threat_model_report.md
 ```
 
 ---
@@ -287,4 +298,3 @@ pip install -r requirements.txt
 Feel free to submit **issues** or **pull requests** to improve the the project.
 
 ---
-
