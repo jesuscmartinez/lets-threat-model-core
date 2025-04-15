@@ -9,10 +9,10 @@ from unittest.mock import patch, AsyncMock, MagicMock
 from pydantic import SecretStr
 
 # Import functions and models from your project.
-from core.services.sarif import SarifGenerator
+from core.services.sarif_services import SarifGenerator
 import main
 from main import parse_asset, ThreatModel
-from pysarif import SarifLog
+from core.models import SarifLog
 
 # ----------------------------------------
 # Fixtures for testing

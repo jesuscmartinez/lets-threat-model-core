@@ -15,7 +15,7 @@ from core.models.dtos.ThreatModel import ThreatModel
 from core.models.enums import AuthnType, DataClassification
 from core.models.dtos.Asset import Asset
 from core.models.dtos.Repository import Repository
-from core.services.sarif import SarifGenerator
+from core.services.sarif_services import SarifGenerator
 from core.services.threat_model_config import ThreatModelConfig
 from core.services.threat_model_services import generate_threat_model
 from core.services.reports import generate_threat_model_report
@@ -156,12 +156,14 @@ async def main(
         markdown_report = generate_threat_model_report(threat_model)
 
         output_path = Path(output_file).expanduser().resolve(strict=False)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(markdown_report)
 
         logger.info(f"✅ Threat model report generated and saved to: {output_path}")
 
         if json_output_file:
             json_output_path = Path(json_output_file).expanduser().resolve(strict=False)
+            json_output_path.parent.mkdir(parents=True, exist_ok=True)
             json_output_path.write_text(threat_model.model_dump_json(indent=4))
             logger.info(f"✅ Threat model JSON saved to: {json_output_path}")
 
@@ -169,10 +171,10 @@ async def main(
             sarif_output_path = (
                 Path(sarif_output_file).expanduser().resolve(strict=False)
             )
+            sarif_output_path.parent.mkdir(parents=True, exist_ok=True)
             generator = SarifGenerator(threat_model)
             sarif_log = generator.generate_sarif_log()
-            sarif_json = json.dumps(sarif_log, indent=4)
-            sarif_output_path.write_text(sarif_json)
+            sarif_output_path.write_text(sarif_log.model_dump_json(indent=4))
             logger.info(f"✅ Threat model SARIF saved to: {sarif_output_path}")
 
     except Exception as e:
