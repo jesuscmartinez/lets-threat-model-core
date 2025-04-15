@@ -26,7 +26,7 @@ class AgentThreat(BaseModel):
     component_names: List[str] = Field(
         ..., description="The name of the component affected by the threat."
     )
-    component_ids: List[str] = Field(
+    component_ids: List[UUID] = Field(
         ..., description="The ID of the component affected by the threat."
     )
     attack_vector: str = Field(..., description="How the attack is executed.")

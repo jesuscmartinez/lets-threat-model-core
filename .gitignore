@@ -180,3 +180,6 @@ cython_debug/
 
 *.md
 !README.md
+
+.vscode/
+*.sarif

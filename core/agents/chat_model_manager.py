@@ -23,10 +23,10 @@ class ChatModelManager:
         provider: str,
         model: str,
         api_key: Optional[SecretStr] = None,
-        top_p: float = 0.8,
+        top_p: float = 1.0,
         temperature: float = 0.0,
-        frequency_penalty=0.1,
-        presence_penalty=0.05,
+        frequency_penalty=0.0,
+        presence_penalty=0.0,
         rate_limiter: Optional[InMemoryRateLimiter] = rate_limiter,
     ) -> BaseChatModel:
         """
@@ -63,13 +63,11 @@ class ChatModelManager:
                 api_key = api_key or SecretStr(os.getenv("OPENAI_API_KEY", ""))
                 init_kwargs["api_key"] = api_key
 
-                if model.lower().startswith("o1-"):
+                if model.lower().startswith(("o1-", "o3-")):
                     del init_kwargs["top_p"]
                     del init_kwargs["frequency_penalty"]
                     del init_kwargs["presence_penalty"]
-                    del init_kwargs[
-                        "temperature"
-                    ]  # OpenAI reasoning models don't support temperature for now
+                    del init_kwargs["temperature"]
 
             elif provider.lower() == "ollama":
                 base_url = os.getenv("OLLAMA_BASE_URL", None)
