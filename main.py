@@ -138,12 +138,6 @@ async def main(
     json_output_file: Optional[str] = None,
     sarif_output_file: Optional[str] = None,
 ):
-async def main(
-    yaml_file: str,
-    output_file: str,
-    json_output_file: Optional[str] = None,
-    sarif_output_file: Optional[str] = None,
-):
     """Loads asset and repositories from YAML and generates a threat model report in Markdown format."""
     try:
         config = load_yaml_config(yaml_file)
