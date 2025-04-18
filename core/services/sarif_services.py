@@ -21,6 +21,7 @@ from core.models.enums import StrideCategory
 
 
 def generate_sarif_log_with_om(threat_model: ThreatModel) -> SarifLog:
+
     # Create rules
     rules = []
     for category in StrideCategory:
@@ -65,26 +66,24 @@ def generate_sarif_log_with_om(threat_model: ThreatModel) -> SarifLog:
             f"## Mitigation\n{mitigations_text}"
         )
 
-        # locations = [
-        #     Location(
-        #         physicalLocation=PhysicalLocation(
-        #             artifactLocation=ArtifactLocation(
-        #                 uri=f"{uri}.{kind_map[key]}-{to_snake(component.name)}",
-        #                 uriBaseId="%SRCROOT%",
-        #             ),
-        #             region=Region(startLine=1, startColumn=1),
-        #         )
-        #     )
-        #     for key in kind_map
-        #     for component in getattr(report, key, [])
-        # ]
+        locations = [
+            Location(
+                physical_location=PhysicalLocation(
+                    artifact_location=ArtifactLocation(
+                        uri=", ".join(threat.component_names),
+                        uri_base_id="%SRCROOT%",
+                    ),
+                    region=Region(start_line=1, start_column=1),
+                )
+            )
+        ]
 
         result = Result(
             rule_id=rule_id,
             level="warning",
             kind="review",
             message=Message(text=description),
-            # locations=locations,
+            locations=locations,
             properties={
                 "id": str(threat.id),
                 "data_flow_report_id": str(threat.data_flow_report_id),
