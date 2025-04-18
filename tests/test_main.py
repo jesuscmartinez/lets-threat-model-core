@@ -6,13 +6,9 @@ from pathlib import Path
 from uuid import uuid4, UUID
 from unittest.mock import patch, AsyncMock, MagicMock
 
-from pydantic import SecretStr
-
 # Import functions and models from your project.
-from core.services.sarif_services import SarifGenerator
 import main
 from main import parse_asset, ThreatModel
-from core.models import SarifLog
 
 # ----------------------------------------
 # Fixtures for testing
