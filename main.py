@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import json
+import json
 import logging
 import os
 from uuid import UUID, uuid4
@@ -137,6 +138,12 @@ async def main(
     json_output_file: Optional[str] = None,
     sarif_output_file: Optional[str] = None,
 ):
+async def main(
+    yaml_file: str,
+    output_file: str,
+    json_output_file: Optional[str] = None,
+    sarif_output_file: Optional[str] = None,
+):
     """Loads asset and repositories from YAML and generates a threat model report in Markdown format."""
     try:
         config = load_yaml_config(yaml_file)
@@ -161,12 +168,14 @@ async def main(
 
         output_path = Path(output_file).expanduser().resolve(strict=False)
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(markdown_report)
 
         logger.info(f"✅ Threat model report generated and saved to: {output_path}")
 
         if json_output_file:
             json_output_path = Path(json_output_file).expanduser().resolve(strict=False)
+            json_output_path.parent.mkdir(parents=True, exist_ok=True)
             json_output_path.parent.mkdir(parents=True, exist_ok=True)
             json_output_path.write_text(threat_model.model_dump_json(indent=4))
             logger.info(f"✅ Threat model JSON saved to: {json_output_path}")
@@ -239,8 +248,24 @@ if __name__ == "__main__":
     """,
     )
 
+    parser.add_argument(
+        "--sarif-output",
+        type=str,
+        help="""\
+    📄 (Optional) Path to save the SARIF threat model report.
+
+    The report will be generated in SARIF (Static Analysis Results Interchange Format), which is useful for integrating with security analysis tools.
+    Example: `reports/threat_model.sarif`
+    """,
+    )
+
     args = parser.parse_args()
 
+    asyncio.run(
+        main(
+            args.config_file, args.markdown_output, args.json_output, args.sarif_output
+        )
+    )
     asyncio.run(
         main(
             args.config_file, args.markdown_output, args.json_output, args.sarif_output
