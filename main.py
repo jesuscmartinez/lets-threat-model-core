@@ -242,24 +242,8 @@ if __name__ == "__main__":
     """,
     )
 
-    parser.add_argument(
-        "--sarif-output",
-        type=str,
-        help="""\
-    📄 (Optional) Path to save the SARIF threat model report.
-
-    The report will be generated in SARIF (Static Analysis Results Interchange Format), which is useful for integrating with security analysis tools.
-    Example: `reports/threat_model.sarif`
-    """,
-    )
-
     args = parser.parse_args()
 
-    asyncio.run(
-        main(
-            args.config_file, args.markdown_output, args.json_output, args.sarif_output
-        )
-    )
     asyncio.run(
         main(
             args.config_file, args.markdown_output, args.json_output, args.sarif_output
