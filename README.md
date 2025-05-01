@@ -1,5 +1,5 @@
 # Lets Threat Model
-![Let's Threat Model Logo](logo_h.png)
+![Let's Threat Model Logo](logo.png)
 
 Generates a **threat model report** in **Markdown format** from a provided YAML file that defines an asset and its associated repositories.
 
