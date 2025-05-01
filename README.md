@@ -1,7 +1,7 @@
 # Lets Threat Model
-Agentic AI Threat Modeling
+![Let's Threat Model Logo](logo.png)
 
-This script generates a **threat model report** in **Markdown format** from a provided YAML file that defines an asset and its associated repositories.
+Generates a **threat model report** in **Markdown format** from a provided YAML file that defines an asset and its associated repositories.
 
 ![Demo](demo/demo_fast.gif)
 
