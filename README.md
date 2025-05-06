@@ -1,9 +1,19 @@
-# Lets Threat Model
+# Let's Threat Model
 ![Let's Threat Model Logo](logo.png)
+---
 
-Generates a **threat model report** in **Markdown format** from a provided YAML file that defines an asset and its associated repositories.
+Let's Threat Model is an Agentic AI tool that helps teams identify and manage threats early in the development lifecycle. Built with extensibility and automation in mind, it brings threat modeling into agile workflows by generating actionable threat models.
+
+## 📌 Features
+- Parses a **YAML configuration file** containing asset and repository details.
+- Uses the configuration to **analyze the specified repository** for potential threats.
+- Generates an **Agentic AI-driven threat model report** based on repository structure and metadata.
+- Supports output in **Markdown, JSON, and SARIF formats** via command-line flags.
+- SARIF output is **compatible with GitHub Code Scanning** and can also be viewed in **IDEs that support SARIF**, such as Visual Studio Code.
+- Provides **detailed logging and error handling** for smooth and transparent execution.
 
 ![Demo](demo/demo_fast.gif)
+---
 
 ## ⚡ Quick Start
 
@@ -54,8 +64,8 @@ config:
   context_window: 128000
   max_output_tokens: 16384
   categorization_agent_llm: "gpt-4o-mini"
-  review_agent_llm: "gpt-4o-mini"
-  threat_model_agent_llm: "gpt-4o-mini"
+  review_agent_llm: "o3-mini"
+  threat_model_agent_llm: "o3-mini"
   report_agent_llm: "gpt-4o-mini"
 ```
 
@@ -79,15 +89,6 @@ After running the container, reports will be generated only if you specify the c
 
 🔧 Optional: If you’d rather run locally without Docker, see the Installation and Usage sections below.
 
----
-
-## 📌 Features
-- Parses a **YAML configuration file** containing asset and repository details.
-- Generates a **threat model** based on the given data.
-- Supports output in **Markdown, JSON, and SARIF formats** via command-line flags.
-- Provides **logging and error handling** for a smooth execution.
-
----
 
 ## 🚀 Installation
 ### **1. Clone the Repository**
@@ -133,9 +134,9 @@ config:
   llm_provider: "openai"
   context_window: 128000
   max_output_tokens: 16384
-  categorization_agent_llm: "gpt-4o-mini"
-  review_agent_llm: "gpt-4o-mini"
-  threat_model_agent_llm: "gpt-4o-mini"
+  categorization_agent_llm: "gpt-4o3-mini"
+  review_agent_llm: "o3-mini"
+  threat_model_agent_llm: "o3-mini"
   report_agent_llm: "gpt-4o-mini"
 
 # Categorize_only is useful when initially running the tool on a new repository.
