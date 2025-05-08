@@ -269,7 +269,12 @@ Threats...
 Data Flow Diagram
 ![Juiceshop DFD](demo/juiceshop_gpt4omini_dfd.png)
 
-Threat Model Report...
+Github Code Scanning Integration
+![Github Code Scanning List](demo/github_code_scanning.png)
+![Github Code Vuln](demo/github_code_vuln.png)
+
+
+Threat Model Report
 
 [Threat Model Report w/ o1-mini](demo/juiceshop_report_o1mini.md)
 

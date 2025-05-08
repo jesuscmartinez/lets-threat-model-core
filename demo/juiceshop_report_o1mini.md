@@ -17,7 +17,7 @@ The OWASP Juice Shop is an intentionally insecure web application designed for s
 - **URL:** github.com/juice-shop/juice-shop
 ## Data Flow Diagrams
 ### Diagram 1
-```
+```mermaid
 graph TD;
     c3fe5c45-e61f-494e-a082-f3848c011a01(("External Entity: User"))
     f6e7efbf-caf2-4ab1-8b3c-00eeafbb906f(("External Entity: B2C Customer (Browser)"))
