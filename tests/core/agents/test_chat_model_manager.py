@@ -51,10 +51,10 @@ def mock_getenv():
         ),
         (
             "openai",
-            "o1-test_model",
+            "o3-test_model",
             {
                 "model_provider": "openai",
-                "model": "o1-test_model",
+                "model": "o3-test_model",
                 "rate_limiter": rate_limiter,
                 "api_key": SecretStr("test_api_key"),
             },

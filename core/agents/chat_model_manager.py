@@ -1,10 +1,12 @@
 import os
 import logging
+import re
 from langchain.chat_models import init_chat_model
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_core.language_models.chat_models import BaseChatModel
 from typing import Optional
 from pydantic import SecretStr
+
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +65,7 @@ class ChatModelManager:
                 api_key = api_key or SecretStr(os.getenv("OPENAI_API_KEY", ""))
                 init_kwargs["api_key"] = api_key
 
-                if model.lower().startswith(("o1-", "o3-")):
+                if re.match(r"o\d-", model.lower()):
                     del init_kwargs["top_p"]
                     del init_kwargs["frequency_penalty"]
                     del init_kwargs["presence_penalty"]

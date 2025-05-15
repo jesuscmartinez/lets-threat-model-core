@@ -53,18 +53,6 @@ def threat_model_agent(mock_base_model, mock_agent_helper):
     return agent
 
 
-@pytest.fixture
-def patch_is_o1_true():
-    with patch("core.agents.threat_model_agent.is_o1", return_value=True):
-        yield
-
-
-@pytest.fixture
-def patch_is_o1_false():
-    with patch("core.agents.threat_model_agent.is_o1", return_value=False):
-        yield
-
-
 # -----------------------------------------------------------------------------
 # Tests: initialize()
 # -----------------------------------------------------------------------------
@@ -98,9 +86,7 @@ def test_finalize_converts_ids(threat_model_agent, threat_graph_state):
 
 
 @pytest.mark.asyncio
-async def test_analyze_processes_components(
-    threat_model_agent, threat_graph_state, patch_is_o1_false
-):
+async def test_analyze_processes_components(threat_model_agent, threat_graph_state):
     # Mock _process_component to simulate async component processing
     mock_result = [{"name": "Threat1", "stride_category": "Tampering"}]
 
@@ -113,9 +99,7 @@ async def test_analyze_processes_components(
 
 
 @pytest.mark.asyncio
-async def test_analyze_handles_exceptions(
-    threat_model_agent, threat_graph_state, patch_is_o1_false
-):
+async def test_analyze_handles_exceptions(threat_model_agent, threat_graph_state):
     # Simulate a component processing error
     threat_model_agent._process_component = AsyncMock(side_effect=Exception("Boom"))
 
@@ -131,9 +115,8 @@ async def test_analyze_handles_exceptions(
 
 
 @pytest.mark.asyncio
-async def test_process_component_success_non_o1(threat_model_agent, patch_is_o1_false):
-    """Test _process_component with non-O1 model."""
-    # Mock the chain behavior (non-O1 returns dicts)
+async def test_process_component_success(threat_model_agent):
+    """Test _process_component with model."""
     mock_chain = AsyncMock()
     mock_chain.ainvoke.return_value = {
         "threats": [{"name": "Threat1", "stride_category": "Spoofing"}]
@@ -151,30 +134,7 @@ async def test_process_component_success_non_o1(threat_model_agent, patch_is_o1_
 
 
 @pytest.mark.asyncio
-async def test_process_component_success_o1(threat_model_agent, patch_is_o1_true):
-    """Test _process_component with O1 model."""
-    # Mock result that returns content as a JSON string
-    mock_result = MagicMock()
-    mock_result.content = (
-        '{"threats": [{"name": "Threat1", "stride_category": "Spoofing"}]}'
-    )
-
-    mock_chain = AsyncMock()
-    mock_chain.ainvoke.return_value = mock_result
-
-    asset = {"name": "TestAsset"}
-    report = {"processes": [{"name": "TestProcess"}]}
-    component = {"name": "TestComponent"}
-
-    threats = await threat_model_agent._process_component(
-        component, asset, report, mock_chain
-    )
-
-    assert threats == [{"name": "Threat1", "stride_category": "Spoofing"}]
-
-
-@pytest.mark.asyncio
-async def test_process_component_exception(threat_model_agent, patch_is_o1_false):
+async def test_process_component_exception(threat_model_agent):
     mock_chain = AsyncMock()
     mock_chain.ainvoke.side_effect = Exception("Processing Error")
 
@@ -210,9 +170,7 @@ def test_consolidate_threats(threat_model_agent, threat_graph_state):
     # Patch the model's with_structured_output method to return our mock chain.
     threat_model_agent.model.with_structured_output.return_value = mock_chain
 
-    # Force is_o1() to return False for this test
-    with patch("core.agents.threat_model_agent.is_o1", return_value=False):
-        updated_state = threat_model_agent.consolidate_threats(threat_graph_state)
+    updated_state = threat_model_agent.consolidate_threats(threat_graph_state)
 
     # Assert that the threats have been consolidated as expected.
     assert updated_state.threats == [

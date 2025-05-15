@@ -203,13 +203,6 @@ def get_model_name(model: BaseChatModel):
     return "Unknown Model"
 
 
-def is_o1(model: BaseChatModel):
-    if get_model_name(model).lower().startswith(("o1-")):
-        return True
-
-    return False
-
-
 def is_rate_limit_error(exception: Exception) -> bool:
     # Example for HTTP errors:
     if hasattr(exception, "status_code") and exception.status_code == 429:
