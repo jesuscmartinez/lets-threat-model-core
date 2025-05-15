@@ -23,7 +23,6 @@ from core.agents.agent_tools import (
     AgentHelper,
     async_invoke_with_retry,
     invoke_with_retry,
-    is_o1,
 )
 from langgraph.graph import StateGraph, START, END
 
@@ -195,17 +194,11 @@ class ThreatModelAgent:
         system_prompt_template = SYSTEM_PROMPT_ANALYZE
 
         # Select the appropriate system prompt template
-        system_prompt = (
-            AIMessagePromptTemplate.from_template(
-                system_prompt_template,
-                partial_variables={"format_instructions": format_instructions},
-            )
-            if is_o1(self.model)
-            else SystemMessagePromptTemplate.from_template(
-                system_prompt_template,
-                partial_variables={"format_instructions": format_instructions},
-            )
+        system_prompt = SystemMessagePromptTemplate.from_template(
+            system_prompt_template,
+            partial_variables={"format_instructions": format_instructions},
         )
+
         user_prompt = HumanMessagePromptTemplate.from_template(
             "Component:\n{component}\n\nAsset:\n{asset}\nAgentDataFlowReport:\n{data_flow_report}"
         )
@@ -215,10 +208,6 @@ class ThreatModelAgent:
         chain = prompt | self.model.with_structured_output(
             schema=Result.model_json_schema()
         )
-
-        # If we have an O1 model, we'll adapt the chain logic
-        if is_o1(self.model):
-            chain = prompt | self.model  # We'll parse after
 
         asset = state.asset
         report = state.data_flow_report
@@ -274,10 +263,6 @@ class ThreatModelAgent:
                     "component": json.dumps(component_data),
                 },
             )
-
-            if is_o1(self.model):
-                cleaned_content = re.sub(r"```json|```", "", result.content).strip()
-                result = json.loads(cleaned_content)
 
             threats = result.get("threats", []) if isinstance(result, dict) else []
             logger.debug(

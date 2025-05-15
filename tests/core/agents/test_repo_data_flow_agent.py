@@ -7,7 +7,7 @@ from pydantic import BaseModel, SecretStr
 
 from core.agents.repo_data_flow_agent import DataFlowAgent, GraphStateModel
 from core.agents.repo_data_flow_agent_config import RepoDataFlowAgentConfig
-from core.agents.agent_tools import AgentHelper, is_o1
+from core.agents.agent_tools import AgentHelper
 from core.models.dtos.File import File
 from git import Repo as GitRepo
 from langgraph.graph import StateGraph, START, END

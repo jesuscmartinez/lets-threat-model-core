@@ -275,9 +275,6 @@ Github Code Scanning Integration
 
 
 Threat Model Report
-
-[Threat Model Report w/ o1-mini](demo/juiceshop_report_o1mini.md)
-
 [Threat Model Report w/ gpt-4o-mini](demo/juiceshop_report_gpt4omini.md)
 
 ---

@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock
-from core.agents.agent_tools import AgentHelper, get_model_name, is_o1
+from core.agents.agent_tools import AgentHelper, get_model_name
 from langchain.chat_models.base import BaseChatModel
 
 
@@ -80,14 +80,3 @@ def test_get_model_name():
 
     del model.model
     assert get_model_name(model) == "Unknown Model"
-
-
-def test_is_o1():
-    """Test checking if model name starts with 'o1-'."""
-    model = MagicMock(spec=BaseChatModel)
-
-    model.model_name = "o1-test_model"
-    assert is_o1(model) is True
-
-    model.model_name = "test_model"
-    assert is_o1(model) is False

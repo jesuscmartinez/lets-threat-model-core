@@ -27,7 +27,6 @@ from core.agents.agent_tools import (
     AgentHelper,
     async_invoke_with_retry,
     invoke_with_retry,
-    is_o1,
     is_rate_limit_error,
 )
 from core.agents.chat_model_manager import ChatModelManager
@@ -507,16 +506,10 @@ class DataFlowAgent:
         parser = JsonOutputParser(pydantic_object=AgentDataFlowReport)
         format_instructions = parser.get_format_instructions()
 
-        if is_o1(self.review_model):
-            system_template = AIMessagePromptTemplate.from_template(
-                SYSTEM_PROMPT_REVIEW,
-                partial_variables={"format_instructions": format_instructions},
-            )
-        else:
-            system_template = SystemMessagePromptTemplate.from_template(
-                SYSTEM_PROMPT_REVIEW,
-                partial_variables={"format_instructions": format_instructions},
-            )
+        system_template = SystemMessagePromptTemplate.from_template(
+            SYSTEM_PROMPT_REVIEW,
+            partial_variables={"format_instructions": format_instructions},
+        )
 
         user_template = HumanMessagePromptTemplate.from_template(
             """
@@ -534,10 +527,6 @@ class DataFlowAgent:
         chain = prompt | self.review_model.with_structured_output(
             schema=AgentDataFlowReport.model_json_schema(),
         )
-
-        # If we have an O1 model, we'll adapt the chain logic
-        if is_o1(self.review_model):
-            chain = prompt | self.review_model  # We'll parse after
 
         max_prompt_tokens = (
             self.config.context_window
@@ -676,13 +665,6 @@ class DataFlowAgent:
                     processed_count,
                     number_of_files,
                 )
-
-                # If is O1, parse after the fact
-                if is_o1(self.review_model):
-                    cleaned_content = re.sub(
-                        r"```json|```", "", llm_result.content
-                    ).strip()
-                    llm_result = json.loads(cleaned_content)
 
                 # Update the data flow report
                 # Some model try to generate valid UUIDs, we need to convert them back
