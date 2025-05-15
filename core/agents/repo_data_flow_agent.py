@@ -3,6 +3,7 @@ import os
 import asyncio
 import fnmatch
 import json
+import re
 from tempfile import TemporaryDirectory
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
@@ -492,17 +493,14 @@ class DataFlowAgent:
         return state
 
     def review_files(self, state: GraphStateModel) -> GraphStateModel:
-        """
-        Reviews files in `should_review`, updates the data_flow_report accordingly.
-        """
-
         logger.info("🔄 Starting file review process with LLM...")
 
-        files_to_review = state.should_review
+        should_review = state.should_review
         reviewed = state.reviewed
         could_not_review = state.could_not_review
+        report = state.data_flow_report
 
-        # Prepare the system prompt
+        # Prepare the prompts
         parser = JsonOutputParser(pydantic_object=AgentDataFlowReport)
         format_instructions = parser.get_format_instructions()
 
@@ -528,156 +526,158 @@ class DataFlowAgent:
             schema=AgentDataFlowReport.model_json_schema(),
         )
 
-        max_prompt_tokens = (
-            self.config.context_window
-            - self.config.max_output_tokens
-            - self.review_model.get_num_tokens(
-                prompt.format(file_data="", data_flow_report="")
-            )
-        )
+        # We'll process until no more files to review
+        while should_review:
 
-        # Helper to chunk file content
-        def _split_file_content(content: str, max_tokens: int) -> List[str]:
-            splitter = RecursiveCharacterTextSplitter(
-                chunk_size=max_tokens // 2,
-                chunk_overlap=max_tokens // 10,
-                length_function=self.review_model.get_num_tokens,
-            )
-            return splitter.split_text(content)
-
-        number_of_files = len(files_to_review)
-        processed_count = 0
-
-        # We'll process until no more files in should_review
-        while files_to_review:
-            report_json = json.dumps(state.data_flow_report)
+            # Recompute report_json and token budget every iteration
+            report_json = json.dumps(report)
             report_token_count = self.review_model.get_num_tokens(report_json)
 
-            # We'll collect multiple files for a single LLM call
-            batch_files = []
-            total_tokens_used = 0
-            remaining_tokens = max_prompt_tokens - report_token_count
-            files_in_batch = 0
+            token_budget = (
+                self.config.context_window
+                - self.config.max_output_tokens
+                - self.review_model.get_num_tokens(
+                    prompt.format(file_data="", data_flow_report=report_json)
+                )
+                - report_token_count
+            )
 
-            # Pop from the set to build a batch
-            pop_list = []
-            for fobj in files_to_review:
-                absolute_path = os.path.join(self.directory, fobj.file_path)
+            # ---------------------------------------------------------------------
+            # Edge-case safeguard:
+            # If the data flow report alone is too large to fit into the context
+            # window, none of the files can be processed, so we must mark all
+            # remaining files as unreviewable to break the loop.
+            # ---------------------------------------------------------------------
+            if token_budget <= 0:
+                justification = f"Data flow report too large to fit in context window ({report_token_count} tokens)."
+                for f in list(should_review):
+                    could_not_review.add(
+                        File(file_path=f.file_path, justification=justification)
+                    )
+                should_review.clear()
+                logger.error(
+                    "🚫 Skipping review: data flow report alone exceeds context window."
+                )
+                break
+
+            batch_files = []  # Files which are sent to the LLM
+            processed_files = []  # Files which are processed
+            for file in should_review:
+                absolute_path = os.path.join(self.directory, file.file_path)
                 try:
                     with open(absolute_path, "r", encoding="utf-8") as fp:
                         file_content = fp.read()
                 except Exception as e:
-                    logger.error("❌ Error reading file %s: %s", fobj.file_path, str(e))
-                    pop_list.append(fobj)
+                    logger.error("❌ Error reading file %s: %s", file.file_path, str(e))
+                    could_not_review.add(
+                        File(file_path=file.file_path, justification=str(e))
+                    )
+                    processed_files.append(file)
                     continue
 
                 file_metadata = {
                     "filename": os.path.basename(absolute_path),
-                    "filepath": fobj.file_path,
+                    "filepath": file.file_path,
                     "content": file_content,
                 }
                 file_metadata_json = json.dumps(file_metadata)
                 file_tokens = self.review_model.get_num_tokens(file_metadata_json)
 
-                if file_tokens >= max_prompt_tokens:
-                    # File is too large for even a single chunk under current settings
-                    justification = (
-                        f"File {fobj.file_path} is too large to process in one pass."
-                    )
-                    logger.warning("⚠️ " + justification)
-                    could_not_review.add(
-                        File(file_path=fobj.file_path, justification=justification)
-                    )
-                    pop_list.append(fobj)
-                    continue
-
-                # If it doesn't fit in the remaining context, let's chunk it
-                if file_tokens >= remaining_tokens:
-                    # Attempt chunking
-                    chunks = _split_file_content(file_metadata_json, remaining_tokens)
-                    for ch in chunks:
-                        chunk_tokens = self.review_model.get_num_tokens(ch)
-                        if total_tokens_used + chunk_tokens > remaining_tokens:
-                            # No more room in this batch
-                            break
-                        batch_files.append(json.loads(ch))  # store as dict
-                        total_tokens_used += chunk_tokens
-                    pop_list.append(fobj)
-                    reviewed.add(fobj)
-                    files_in_batch += 1
-                else:
-                    # Enough space to add the entire file
+                if file_tokens < token_budget:
                     batch_files.append(file_metadata)
-                    total_tokens_used += file_tokens
-                    pop_list.append(fobj)
-                    reviewed.add(fobj)
-                    files_in_batch += 1
+                    token_budget -= file_tokens
+                    processed_files.append(file)
+                # NOTE: Do not mark as reviewed here; only after successful LLM invocation
 
-                # Check if we hit batch limits
-                if files_in_batch >= self.config.review_max_file_in_batch:
-                    break
+            if batch_files:
+                # Retry loop for LLM batch failures with batch reduction
+                attempt_batch = batch_files
+                attempt_processed_files = processed_files
+                batch_success = False
+                while attempt_batch:
+                    try:
+                        llm_result = invoke_with_retry(
+                            chain,
+                            {
+                                "file_data": json.dumps(attempt_batch),
+                                "data_flow_report": report_json,
+                            },
+                        )
+                        report = llm_result
+                        logger.info(
+                            "Processed %d/%d files successfully.",
+                            len(attempt_processed_files),
+                            len(should_review),
+                        )
+                        reviewed.update(attempt_processed_files)
+                        should_review = should_review - set(attempt_processed_files)
+                        batch_success = True
+                        break
+                    except Exception as e:
+                        logger.error(
+                            "❌ Error during LLM review: %s", str(e), exc_info=True
+                        )
+                        # Before retrying, split processed_files into actual/remainder
+                        actual_batch_size = len(attempt_batch)
+                        deferred_files = attempt_processed_files[actual_batch_size:]
+                        attempt_processed_files = attempt_processed_files[
+                            :actual_batch_size
+                        ]
+                        # After each retry loop (success or failure), restore deferred_files to should_review
+                        should_review.update(deferred_files)
+                        if len(attempt_batch) > 1:
+                            # Reduce batch size by half and retry
+                            attempt_batch = attempt_batch[: len(attempt_batch) // 2]
+                            attempt_processed_files = attempt_processed_files[
+                                : len(attempt_batch)
+                            ]
+                            logger.warning(
+                                "⚠️ Reducing batch size to %d and retrying...",
+                                len(attempt_batch),
+                            )
+                        else:
+                            # Mark all files in batch as could_not_review and break
+                            for file in attempt_processed_files:
+                                could_not_review.add(
+                                    File(
+                                        file_path=file["filepath"], justification=str(e)
+                                    )
+                                )
+                            batch_success = False
+                            break
+                # After each retry, restore any deferred files to should_review
+                # (already handled in the except block)
+                # If batch_success is False, processed_files already handled above
 
-            # Remove from the original set
-            for fobj in pop_list:
-                files_to_review.remove(fobj)
-
-            if not batch_files:
-                # Possibly no files or all were too large.
-                continue
-
-            try:
-
-                # Serialize file data once
-                file_data_json = json.dumps(batch_files)
-
-                # Format the complete prompt once
-                full_prompt = prompt.format(
-                    file_data=file_data_json, data_flow_report=report_json
+            # ---------------------------------------------------------------------
+            # Edge-case safeguard:
+            # If all remaining files are too large for the available prompt budget,
+            # none will be added to the batch and the loop would otherwise spin
+            # forever. We now mark them as unreviewable and break safely.
+            # ---------------------------------------------------------------------
+            if not processed_files:
+                logger.warning(
+                    "⚠️ No files processed in this iteration. Marking remaining files "
+                    "as 'Could Not Review' to avoid infinite loop."
                 )
-
-                # Compute total tokens and log the count
-                total_tokens = self.review_model.get_num_tokens(full_prompt)
-                logger.debug("Total prompt tokens: %s", total_tokens)
-
-                # Check if the full prompt is within the allowed token budget
-                token_budget = (
-                    self.config.context_window - self.config.max_output_tokens
-                )
-                if total_tokens > token_budget:
-                    logger.warning(
-                        "Full prompt exceeds token budget (%d > %d tokens)!",
-                        total_tokens,
-                        token_budget,
+                for f in list(should_review):
+                    could_not_review.add(
+                        File(
+                            file_path=f.file_path,
+                            justification=(
+                                "File could not be processed because it exceeds the "
+                                "model's available token budget for a single request."
+                            ),
+                        )
                     )
+                should_review.clear()
+                break
 
-                # Async retry wrapper for chain.ainvoke
-                llm_result = invoke_with_retry(
-                    chain,
-                    {
-                        "file_data": file_data_json,
-                        "data_flow_report": report_json,
-                    },
-                )
-
-                processed_count += files_in_batch
-                logger.info(
-                    "Processed %d/%d files successfully.",
-                    processed_count,
-                    number_of_files,
-                )
-
-                # Update the data flow report
-                # Some model try to generate valid UUIDs, we need to convert them back
-                llm_result = self.agent_helper.convert_ids_to_uuids(llm_result)
-                state.data_flow_report = llm_result
-
-            except Exception as e:
-                logger.error("❌ Error processing batch: %s", e, exc_info=True)
-
-        # Update final sets
         state.reviewed = reviewed
         state.could_not_review = could_not_review
-        state.should_review = files_to_review
+        state.should_review = should_review
+
+        state.data_flow_report = report
 
         logger.info("✅ Finished file review process.")
         logger.info(self.get_report_stats(state))
@@ -708,7 +708,7 @@ class DataFlowAgent:
             logger.info("✅ Enough files reviewed. Stopping review process.")
             return True
 
-        logger.info("❌ More files need review. Continuing.")
+        logger.info("❌ More files need review. Continuing...")
         return False
 
     # -------------------------------------------------------------------------
