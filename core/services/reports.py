@@ -128,7 +128,7 @@ def generate_threat_model_report(threat_model: ThreatModel) -> str:
 
     # Repo Information
     report += "## Repository Information\n"
-    for i, repo in enumerate(threat_model.repos, 1):
+    for i, repo in enumerate(sorted(threat_model.repos, key=lambda r: r.name), 1):
         report += f"- **Name:** {repo.name}\n"
         report += f"- **Description:** {repo.description}\n"
         report += f"- **URL:** {repo.url}\n"
@@ -145,28 +145,28 @@ def generate_threat_model_report(threat_model: ThreatModel) -> str:
         # External Entities
         if report_data.external_entities:
             report += "#### External Entities\n"
-            for entity in report_data.external_entities:
+            for entity in sorted(report_data.external_entities, key=lambda e: e.name):
                 report += f"- **{entity.name}**: {entity.description}\n"
             report += "\n"
 
         # Processes
         if report_data.processes:
             report += "#### Processes\n"
-            for process in report_data.processes:
+            for process in sorted(report_data.processes, key=lambda p: p.name):
                 report += f"- **{process.name}**: {process.description}\n"
             report += "\n"
 
         # Data Stores
         if report_data.data_stores:
             report += "#### Data Stores\n"
-            for store in report_data.data_stores:
+            for store in sorted(report_data.data_stores, key=lambda s: s.name):
                 report += f"- **{store.name}**: {store.description}\n"
             report += "\n"
 
         # Trust Boundaries
         if report_data.trust_boundaries:
             report += "#### Trust Boundaries\n"
-            for boundary in report_data.trust_boundaries:
+            for boundary in sorted(report_data.trust_boundaries, key=lambda b: b.name):
                 report += f"- **{boundary.name}**: {boundary.description}\n"
             report += "\n"
 
@@ -175,7 +175,7 @@ def generate_threat_model_report(threat_model: ThreatModel) -> str:
     if threat_model.threats:
         report += "| Threat | STRIDE Category | Attack Vector | Impact Level | Risk Rating | Affected Components |\n"
         report += "|---|---|---|---|---|---|\n"
-        for threat in threat_model.threats:
+        for threat in sorted(threat_model.threats, key=lambda t: t.name):
             components_str = ", ".join(threat.component_names)
             report += (
                 f"| {threat.name} "
@@ -192,7 +192,7 @@ def generate_threat_model_report(threat_model: ThreatModel) -> str:
     # Threats Section
     report += "## Threats Identified\n"
     if threat_model.threats:
-        for threat in threat_model.threats:
+        for threat in sorted(threat_model.threats, key=lambda t: t.name):
             report += f"### {threat.name}\n"
             report += f"**Description:** {threat.description}\n"
             report += f"**STRIDE Category:** {threat.stride_category.name}\n"
@@ -246,11 +246,21 @@ def generate_threat_model_report(threat_model: ThreatModel) -> str:
         ]
 
         report += f"# Files:\n"
-        report += process_files("Reviewed", reviewed_files)
-        report += process_files("Should Review", should_files)
-        report += process_files("Should Not Review", should_not_files)
-        report += process_files("Could Review", could_files)
-        report += process_files("Could Not Review", could_not_files)
+        report += process_files(
+            "Reviewed", sorted(reviewed_files, key=lambda f: f.file_path)
+        )
+        report += process_files(
+            "Should Review", sorted(should_files, key=lambda f: f.file_path)
+        )
+        report += process_files(
+            "Should Not Review", sorted(should_not_files, key=lambda f: f.file_path)
+        )
+        report += process_files(
+            "Could Review", sorted(could_files, key=lambda f: f.file_path)
+        )
+        report += process_files(
+            "Could Not Review", sorted(could_not_files, key=lambda f: f.file_path)
+        )
 
     return report
 

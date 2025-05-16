@@ -203,9 +203,12 @@ def get_model_name(model: BaseChatModel):
     return "Unknown Model"
 
 
-def is_rate_limit_error(exception: Exception) -> bool:
+def is_rate_limit_error(exception: BaseException) -> bool:
     # Example for HTTP errors:
-    if hasattr(exception, "status_code") and exception.status_code == 429:
+    if (
+        hasattr(exception, "status_code")
+        and getattr(exception, "status_code", None) == 429
+    ):
         return True
     # OR parse error message or code if it's embedded in exception.args
     return False
