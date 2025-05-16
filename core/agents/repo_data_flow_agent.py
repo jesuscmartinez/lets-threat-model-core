@@ -194,7 +194,11 @@ class DataFlowAgent:
     ):
         self.categorize_model = categorization_model
         self.review_model = review_model
-        self.directory = directory
+        # Normalize directory to always be a string path
+        if isinstance(directory, str):
+            self.directory = directory
+        else:
+            self.directory = directory.name
         self.agent_helper = AgentHelper()
         self.username = username
         self.password = password
@@ -360,7 +364,9 @@ class DataFlowAgent:
             File Paths:
             {file_paths}
             """,
-            partial_variables={"data_flow_report": json.dumps(data_flow_report)},
+            partial_variables={
+                "data_flow_report": json.dumps(data_flow_report, sort_keys=True)
+            },
         )
         prompt = ChatPromptTemplate.from_messages([system_prompt, user_prompt])
 
@@ -388,7 +394,7 @@ class DataFlowAgent:
                 )
             file_data = [{"file_path": fp} for fp in batch]
             result = await async_invoke_with_retry(
-                chain, {"file_paths": json.dumps(file_data)}
+                chain, {"file_paths": json.dumps(file_data, sort_keys=True)}
             )
             return result
 
@@ -442,7 +448,14 @@ class DataFlowAgent:
             if (len(current_batch) >= self.config.categorize_max_file_in_batch) or (
                 current_token_count + path_token_count > max_tokens
             ):
-                tasks.append(_batch_categorize_files(current_batch))
+                # Change: append (batch_index, copy_of_current_batch, coroutine)
+                tasks.append(
+                    (
+                        len(tasks),
+                        list(current_batch),
+                        _batch_categorize_files(list(current_batch)),
+                    )
+                )
                 current_batch = []
                 current_token_count = 0
 
@@ -451,16 +464,25 @@ class DataFlowAgent:
 
         # Last batch if any
         if current_batch:
-            tasks.append(_batch_categorize_files(current_batch))
+            tasks.append(
+                (
+                    len(tasks),
+                    list(current_batch),
+                    _batch_categorize_files(list(current_batch)),
+                )
+            )
 
-        # Await all tasks
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        for r in results:
+        # Await all tasks: only gather the coroutine part
+        results = await asyncio.gather(*(t[2] for t in tasks), return_exceptions=True)
+        # Zip results with metadata and sort by index
+        indexed_results = [(t[0], t[1], r) for t, r in zip(tasks, results)]
+        indexed_results.sort(key=lambda x: x[0])
+        for _, _, r in indexed_results:
             if isinstance(r, Exception):
                 logger.error("❌ Error from categorization batch: %s", r)
                 continue
-            _merge_categorization_results(r)
-
+            if isinstance(r, CategorizationResult):
+                _merge_categorization_results(r)
         # Handle any uncategorized or fake files
         categorized_all = (
             new_state_sets["should_review"]
@@ -530,7 +552,7 @@ class DataFlowAgent:
         while should_review:
 
             # Recompute report_json and token budget every iteration
-            report_json = json.dumps(report)
+            report_json = json.dumps(report, sort_keys=True)
             report_token_count = self.review_model.get_num_tokens(report_json)
 
             token_budget = (
@@ -580,7 +602,7 @@ class DataFlowAgent:
                     "filepath": file.file_path,
                     "content": file_content,
                 }
-                file_metadata_json = json.dumps(file_metadata)
+                file_metadata_json = json.dumps(file_metadata, sort_keys=True)
                 file_tokens = self.review_model.get_num_tokens(file_metadata_json)
 
                 if file_tokens < token_budget:
@@ -599,7 +621,7 @@ class DataFlowAgent:
                         llm_result = invoke_with_retry(
                             chain,
                             {
-                                "file_data": json.dumps(attempt_batch),
+                                "file_data": json.dumps(attempt_batch, sort_keys=True),
                                 "data_flow_report": report_json,
                             },
                         )

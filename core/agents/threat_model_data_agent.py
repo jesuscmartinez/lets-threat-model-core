@@ -177,9 +177,11 @@ class ThreatModelDataAgent:
             # Prepare inputs for this iteration
             chain_inputs = {
                 "previous_summary": previous_summary,
-                "asset": json.dumps(asset),
-                "data_flow_report": json.dumps(overview),  # Singular report
-                "threats": json.dumps(threats),
+                "asset": json.dumps(asset, sort_keys=True),
+                "data_flow_report": json.dumps(
+                    overview, sort_keys=True
+                ),  # Singular report
+                "threats": json.dumps(threats, sort_keys=True),
             }
 
             # Invoke the chain with retry logic

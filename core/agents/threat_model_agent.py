@@ -220,7 +220,9 @@ class ThreatModelAgent:
                 "data_stores",
                 "trust_boundaries",
             )
-            for component in report.get(key, [])
+            for component in sorted(
+                report.get(key, []), key=lambda c: c.get("name", "")
+            )
         ]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -230,7 +232,8 @@ class ThreatModelAgent:
             if isinstance(res, Exception):
                 logger.error("❌ An error occurred in component analysis", exc_info=res)
                 continue
-            all_threats.extend(res)
+            if isinstance(res, list):
+                all_threats.extend(res)
 
         logger.info(
             "✅ Finished threat model analysis. Total threats found: %d",
@@ -258,9 +261,9 @@ class ThreatModelAgent:
             result = await async_invoke_with_retry(
                 chain,
                 {
-                    "asset": json.dumps(asset),
-                    "data_flow_report": json.dumps(report),
-                    "component": json.dumps(component_data),
+                    "asset": json.dumps(asset, sort_keys=True),
+                    "data_flow_report": json.dumps(report, sort_keys=True),
+                    "component": json.dumps(component_data, sort_keys=True),
                 },
             )
 
@@ -319,7 +322,9 @@ class ThreatModelAgent:
             try:
                 logger.info("Consolidating threats in category: %s", category)
 
-                result = invoke_with_retry(chain, {"threats": json.dumps(group_list)})
+                result = invoke_with_retry(
+                    chain, {"threats": json.dumps(group_list, sort_keys=True)}
+                )
 
                 merged_threats = result.get("threats", [])
                 consolidated.extend(merged_threats)
