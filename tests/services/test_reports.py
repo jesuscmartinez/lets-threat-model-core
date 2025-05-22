@@ -1,20 +1,44 @@
+from unittest.mock import patch
 import unittest
 import json
 from uuid import uuid4
+
+import pytest
 from core.models.dtos.DataFlowReport import DataFlowReport, AgentDataFlowReport
 from core.models.dtos.ThreatModel import ThreatModel
 from core.models.dtos.Threat import Threat
 from core.models.dtos.Asset import Asset
 from core.models.dtos.Repository import Repository
+from core.services.threat_model_config import ThreatModelConfig
 from core.models.enums import AuthnType, DataClassification, StrideCategory, Level
+from pydantic import SecretStr
 from core.services.reports import (
-    generate_mermaid_from_dataflow,
+    generate_mermaid_dataflow_diagram,
     generate_threat_model_report,
 )
 
 
 class TestReports(unittest.TestCase):
     def setUp(self):
+        # Initialize configuration using the threat_model_config fixture
+        self.config = ThreatModelConfig(
+            llm_provider="openai",
+            categorization_agent_llm="gpt-4o-mini",
+            report_agent_llm="gpt-4o-mini",
+            threat_model_agent_llm="gpt-4o-mini",
+            username="user",
+            pat=SecretStr("token"),
+            context_window=2048,
+            max_output_tokens=512,
+            review_max_file_in_batch=10,
+            review_token_buffer=100,
+            categorize_max_file_in_batch=10,
+            categorize_token_buffer=100,
+            categorize_only=False,
+            completion_threshold=0.9,
+            review_agent_llm="review_model",
+        )
+
         # Create a dummy AgentDataFlowReport (with empty collections)
         self.agent_report = AgentDataFlowReport(
             overview="Test overview",
@@ -89,22 +113,20 @@ class TestReports(unittest.TestCase):
 
     def test_generate_mermaid_from_dataflow(self):
         """Test that a Mermaid diagram is generated and contains expected content."""
-        diagram = generate_mermaid_from_dataflow(self.data_flow_report)
+        diagram = generate_mermaid_dataflow_diagram(self.config, self.data_flow_report)
         self.assertIsInstance(diagram, str)
         self.assertIn("graph TD", diagram)
 
-    # def test_generate_dot_from_dataflow(self):
-    #     """Test that a DOT diagram is generated and includes 'digraph'."""
-    #     dot = generate_dot_from_dataflow(self.data_flow_report)
-    #     self.assertIsInstance(dot, str)
-    #     self.assertIn("digraph", dot.lower())
-
-    def test_generate_threat_model_report(self):
+    @patch("core.services.reports.generate_mermaid_dataflow_diagram")
+    def test_generate_threat_model_report(self, mock_generate_diagram):
         """Test that the Markdown report contains key sections and asset information."""
-        report = generate_threat_model_report(self.threat_model)
+        mock_generate_diagram.return_value = "graph TD;\nA-->B"
+
+        report = generate_threat_model_report(self.config, self.threat_model)
         self.assertIsInstance(report, str)
         self.assertIn("# Threat Model Report", report)
         self.assertIn(self.threat_model.asset.name, report)
+        self.assertIn("graph TD", report)
 
 
 if __name__ == "__main__":

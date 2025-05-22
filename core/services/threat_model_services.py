@@ -9,10 +9,6 @@ from core.models.dtos.Threat import Threat, AgentThreat
 from core.agents.threat_model_data_agent import ThreatModelDataAgent
 from core.models.dtos.Repository import Repository
 from core.agents.chat_model_manager import ChatModelManager
-from core.services.reports import (
-    generate_mermaid_from_dataflow,
-    generate_mermaid_dataflow_diagram,
-)
 import logging
 import uuid
 from tempfile import TemporaryDirectory
@@ -37,7 +33,6 @@ async def generate_threat_model(
         summary="No summary generated.",
         asset=asset,
         repos=repos,
-        data_flow_diagrams=[],
         data_flow_reports=[],
         threats=[],
     )
