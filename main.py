@@ -158,7 +158,9 @@ async def main(
         )
 
         # Generate and save the report
-        markdown_report = generate_threat_model_report(threat_model)
+        markdown_report = generate_threat_model_report(
+            threat_model_config=threat_model_config, threat_model=threat_model
+        )
 
         output_path = Path(output_file).expanduser().resolve(strict=False)
         output_path.parent.mkdir(parents=True, exist_ok=True)

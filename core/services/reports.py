@@ -1,8 +1,12 @@
 from datetime import datetime, timezone
 from enum import Enum
 import json
+from logging import config
+from core.agents.chat_model_manager import ChatModelManager
+from core.services.threat_model_config import ThreatModelConfig
 from core.models.dtos.DataFlowReport import DataFlowReport
 from core.models.dtos.ThreatModel import ThreatModel
+from core.agents.diagram_agent import DiagramAgent
 from core.models.dtos.DataFlowReport import DataFlow
 from typing import Dict, Set
 from collections import defaultdict
@@ -16,85 +20,57 @@ from uuid import uuid4
 from core.models.dtos.Threat import Threat
 
 
-def generate_mermaid_from_dataflow(dataflow_report: DataFlowReport) -> str:
-    """
-    Generate a Mermaid.js representation of the data flow from a DataFlowReport.
+def generate_mermaid_dataflow_diagram(
+    config: ThreatModelConfig, report: DataFlowReport
+) -> str:
+    # Initialize the diagram agent
+    diagram_agent = DiagramAgent(
+        model=ChatModelManager.get_model(
+            provider=config.llm_provider, model=config.report_agent_llm
+        )
+    )
 
-    :param dataflow_report: A DataFlowReport instance.
-    :return: Mermaid.js format string representation of the data flow diagram.
-    """
-    mermaid = ["graph TD;"]  # Start the Mermaid diagram
+    # Example state for the workflow
+    state = {"data_flow_report": report}
 
-    # Mapping of components by ID
-    component_map = {}
+    end_state = diagram_agent.get_workflow().invoke(input=state)
 
-    # Add nodes (External Entities, Processes, Data Stores)
-    for entity in dataflow_report.external_entities:
-        mermaid.append(f'    {entity.id}(("External Entity: {entity.name}"))')
-        component_map[entity.id] = entity
-
-    for process in dataflow_report.processes:
-        mermaid.append(f'    {process.id}["Process: {process.name}"]')
-        component_map[process.id] = process
-
-    for store in dataflow_report.data_stores:
-        mermaid.append(f'    {store.id}[("Data Store: {store.name}")]')
-        component_map[store.id] = store
-
-    # Add Trust Boundaries (Subgraphs)
-    for boundary in dataflow_report.trust_boundaries:
-        mermaid.append(f'    subgraph {boundary.id}["{boundary.name}"]')
-        for component_id in boundary.component_ids:
-            if component_id in component_map:
-                mermaid.append(f"        {component_id}")
-        mermaid.append("    end")
-
-    # Add edges (Data Flows)
-    for node in (
-        dataflow_report.external_entities
-        + dataflow_report.processes
-        + dataflow_report.data_stores
-    ):
-        for flow in node.data_flows:
-            mermaid.append(f"    {node.id} -->|{flow.data_type}| {flow.destination_id}")
-
-    return "\n".join(mermaid)  # Returns the Mermaid diagram as a string
+    # Return the mermaid diagram
+    return end_state["mermaid_diagram"]
 
 
-# def generate_dot_from_dataflow(dataflow_report: DataFlowReport) -> str:
+# def generate_mermaid_dataflow(dataflow_report: DataFlowReport) -> str:
 #     """
-#     Generate a DOT representation of the data flow from a DataFlowReport.
+#     Generate a Mermaid.js representation of the data flow from a DataFlowReport.
 
 #     :param dataflow_report: A DataFlowReport instance.
-#     :return: DOT format string representation of the data flow diagram.
+#     :return: Mermaid.js format string representation of the data flow diagram.
 #     """
-#     dot = Digraph(comment="Data Flow Diagram")
+#     mermaid = ["graph TD;"]  # Start the Mermaid diagram
 
 #     # Mapping of components by ID
 #     component_map = {}
 
 #     # Add nodes (External Entities, Processes, Data Stores)
 #     for entity in dataflow_report.external_entities:
-#         dot.node(
-#             str(entity.id), f"External Entity: {entity.name}", shape="parallelogram"
-#         )
+#         mermaid.append(f'    {entity.id}(("External Entity: {entity.name}"))')
 #         component_map[entity.id] = entity
 
 #     for process in dataflow_report.processes:
-#         dot.node(str(process.id), f"Process: {process.name}", shape="box")
+#         mermaid.append(f'    {process.id}["Process: {process.name}"]')
 #         component_map[process.id] = process
 
 #     for store in dataflow_report.data_stores:
-#         dot.node(str(store.id), f"Data Store: {store.name}", shape="cylinder")
+#         mermaid.append(f'    {store.id}[("Data Store: {store.name}")]')
 #         component_map[store.id] = store
 
 #     # Add Trust Boundaries (Subgraphs)
 #     for boundary in dataflow_report.trust_boundaries:
-#         with dot.subgraph(name=f"cluster_{boundary.id}") as sub:
-#             sub.attr(label=boundary.name, color="blue")
-#             for component_id in boundary.component_ids:
-#                 if component_id in component_map:
-#                     sub.node(str(component_id))
+#         mermaid.append(f'    subgraph {boundary.id}["{boundary.name}"]')
+#         for component_id in boundary.component_ids:
+#             if component_id in component_map:
+#                 mermaid.append(f"        {component_id}")
+#         mermaid.append("    end")
 
 #     # Add edges (Data Flows)
 #     for node in (
@@ -103,12 +79,14 @@ def generate_mermaid_from_dataflow(dataflow_report: DataFlowReport) -> str:
 #         + dataflow_report.data_stores
 #     ):
 #         for flow in node.data_flows:
-#             dot.edge(str(node.id), str(flow.destination_id), label=flow.data_type)
+#             mermaid.append(f"    {node.id} -->|{flow.data_type}| {flow.destination_id}")
 
-#     return dot.source  # Returns the DOT string representation
+#     return "\n".join(mermaid)  # Returns the Mermaid diagram as a string
 
 
-def generate_threat_model_report(threat_model: ThreatModel) -> str:
+def generate_threat_model_report(
+    threat_model_config: ThreatModelConfig, threat_model: ThreatModel
+) -> str:
     """Generates a Markdown-formatted Threat Model Report."""
 
     # Header
@@ -139,7 +117,10 @@ def generate_threat_model_report(threat_model: ThreatModel) -> str:
         report += f"### Report {i}\n"
         report += f"**Overview:** {report_data.overview}\n\n"
 
-        diagram = generate_mermaid_from_dataflow(report_data)
+        diagram = generate_mermaid_dataflow_diagram(
+            config=threat_model_config, report=report_data
+        )
+        # diagram_2 = generate_mermaid_dataflow_diagram(report_data)
         report += f"### Diagram {i}\n```mermaid\n{diagram}\n```\n\n"
 
         # External Entities
@@ -265,148 +246,148 @@ def generate_threat_model_report(threat_model: ThreatModel) -> str:
     return report
 
 
-def generate_mermaid_dataflow_diagram(report: DataFlowReport) -> str:
-    """
-    Generates a Mermaid.js 'flowchart LR' diagram string from a DataFlowReport (or AgentDataFlowReport).
-    It handles External Entities, Processes, Data Stores, and Trust Boundaries.
-    """
+# def generate_mermaid_dataflow_diagram(report: DataFlowReport) -> str:
+#     """
+#     Generates a Mermaid.js 'flowchart LR' diagram string from a DataFlowReport (or AgentDataFlowReport).
+#     It handles External Entities, Processes, Data Stores, and Trust Boundaries.
+#     """
 
-    # 1. Gather references to all node collections
-    external_entities = report.external_entities
-    processes = report.processes
-    data_stores = report.data_stores
-    trust_boundaries = report.trust_boundaries
+#     # 1. Gather references to all node collections
+#     external_entities = report.external_entities
+#     processes = report.processes
+#     data_stores = report.data_stores
+#     trust_boundaries = report.trust_boundaries
 
-    # 2. Build a lookup of all components by UUID -> { name, description, type }
-    components: Dict[str, Dict] = {}
+#     # 2. Build a lookup of all components by UUID -> { name, description, type }
+#     components: Dict[str, Dict] = {}
 
-    def add_component(comp, comp_type: str):
-        comp_id = str(comp.id)
-        components[comp_id] = {
-            "name": comp.name,
-            "description": comp.description,
-            "type": comp_type,
-        }
+#     def add_component(comp, comp_type: str):
+#         comp_id = str(comp.id)
+#         components[comp_id] = {
+#             "name": comp.name,
+#             "description": comp.description,
+#             "type": comp_type,
+#         }
 
-    for ee in external_entities:
-        add_component(ee, "ExternalEntity")
-    for proc in processes:
-        add_component(proc, "Process")
-    for ds in data_stores:
-        add_component(ds, "DataStore")
+#     for ee in external_entities:
+#         add_component(ee, "ExternalEntity")
+#     for proc in processes:
+#         add_component(proc, "Process")
+#     for ds in data_stores:
+#         add_component(ds, "DataStore")
 
-    # 3. Map component IDs to their trust boundary name
-    boundary_map: Dict[str, str] = {}
-    for tb in trust_boundaries:
-        for comp_id in tb.component_ids:
-            boundary_map[str(comp_id)] = tb.name
+#     # 3. Map component IDs to their trust boundary name
+#     boundary_map: Dict[str, str] = {}
+#     for tb in trust_boundaries:
+#         for comp_id in tb.component_ids:
+#             boundary_map[str(comp_id)] = tb.name
 
-    # 4. Gather data flows (keyed by flow ID to avoid duplicates)
-    flows: Dict[str, Dict] = {}
+#     # 4. Gather data flows (keyed by flow ID to avoid duplicates)
+#     flows: Dict[str, Dict] = {}
 
-    def record_flow(flow_id: str, source_id: str, destination_id: str, name: str):
-        flows[flow_id] = {
-            "source_id": source_id,
-            "destination_id": destination_id,
-            "name": name,
-        }
+#     def record_flow(flow_id: str, source_id: str, destination_id: str, name: str):
+#         flows[flow_id] = {
+#             "source_id": source_id,
+#             "destination_id": destination_id,
+#             "name": name,
+#         }
 
-    def handle_data_flows(node_id: str, data_flows):
-        """
-        For each DataFlow, decide the source/destination based on 'direction'.
-        'outgoing'/'write': node -> destination
-        'incoming'/'read': destination -> node
-        'bidirectional': create two edges (or one with a special label).
-        """
-        for df in data_flows:
-            df_id = str(df.id)
-            dest_id = str(df.destination_id)
-            flow_name = df.name
-            direction = df.direction.lower()
+#     def handle_data_flows(node_id: str, data_flows):
+#         """
+#         For each DataFlow, decide the source/destination based on 'direction'.
+#         'outgoing'/'write': node -> destination
+#         'incoming'/'read': destination -> node
+#         'bidirectional': create two edges (or one with a special label).
+#         """
+#         for df in data_flows:
+#             df_id = str(df.id)
+#             dest_id = str(df.destination_id)
+#             flow_name = df.name
+#             direction = df.direction.lower()
 
-            if direction in ["outgoing", "write"]:
-                source_id = node_id
-                record_flow(df_id, source_id, dest_id, flow_name)
-            elif direction in ["incoming", "read"]:
-                source_id = dest_id
-                record_flow(df_id, source_id, node_id, flow_name)
-            elif direction == "bidirectional":
-                # Represent bidirectional with two flows or a special label
-                record_flow(
-                    df_id + "_fw", node_id, dest_id, flow_name + " (bidirectional)"
-                )
-                record_flow(
-                    df_id + "_bw", dest_id, node_id, flow_name + " (bidirectional)"
-                )
+#             if direction in ["outgoing", "write"]:
+#                 source_id = node_id
+#                 record_flow(df_id, source_id, dest_id, flow_name)
+#             elif direction in ["incoming", "read"]:
+#                 source_id = dest_id
+#                 record_flow(df_id, source_id, node_id, flow_name)
+#             elif direction == "bidirectional":
+#                 # Represent bidirectional with two flows or a special label
+#                 record_flow(
+#                     df_id + "_fw", node_id, dest_id, flow_name + " (bidirectional)"
+#                 )
+#                 record_flow(
+#                     df_id + "_bw", dest_id, node_id, flow_name + " (bidirectional)"
+#                 )
 
-    # Collect data flows from each type of node
-    for ee in external_entities:
-        handle_data_flows(str(ee.id), ee.data_flows)
-    for proc in processes:
-        handle_data_flows(str(proc.id), proc.data_flows)
-    for ds in data_stores:
-        handle_data_flows(str(ds.id), ds.data_flows)
+#     # Collect data flows from each type of node
+#     for ee in external_entities:
+#         handle_data_flows(str(ee.id), ee.data_flows)
+#     for proc in processes:
+#         handle_data_flows(str(proc.id), proc.data_flows)
+#     for ds in data_stores:
+#         handle_data_flows(str(ds.id), ds.data_flows)
 
-    # 5. Prepare the Mermaid lines
-    mermaid_lines = ["flowchart LR"]
+#     # 5. Prepare the Mermaid lines
+#     mermaid_lines = ["flowchart LR"]
 
-    # -- Helper to escape special characters that cause Mermaid parse errors --
-    def sanitize_for_mermaid(text: str) -> str:
-        """
-        Escapes parentheses (and can be extended for other special characters).
-        Prevents parse errors in Mermaid subgraph and node labels.
-        """
-        # Replace '(' and ')' with '\(' and '\)'
-        # Optionally, do the same for [ ] or other characters if needed.
-        text = text.replace("(", "\\(").replace(")", "\\)")
-        return text
+#     # -- Helper to escape special characters that cause Mermaid parse errors --
+#     def sanitize_for_mermaid(text: str) -> str:
+#         """
+#         Escapes parentheses (and can be extended for other special characters).
+#         Prevents parse errors in Mermaid subgraph and node labels.
+#         """
+#         # Replace '(' and ')' with '\(' and '\)'
+#         # Optionally, do the same for [ ] or other characters if needed.
+#         text = text.replace("(", "\\(").replace(")", "\\)")
+#         return text
 
-    # 5a. Organize subgraphs by trust boundary
-    boundary_components_map: Dict[str, Set[str]] = defaultdict(set)
-    for comp_id, b_name in boundary_map.items():
-        boundary_components_map[b_name].add(comp_id)
+#     # 5a. Organize subgraphs by trust boundary
+#     boundary_components_map: Dict[str, Set[str]] = defaultdict(set)
+#     for comp_id, b_name in boundary_map.items():
+#         boundary_components_map[b_name].add(comp_id)
 
-    placed_components = set()
+#     placed_components = set()
 
-    def render_component(comp_id: str, info: Dict) -> str:
-        """
-        Returns a Mermaid node definition, e.g.:
-          comp_id["Name\n(Type)\nDescription"]
-        """
-        name_type = f"{sanitize_for_mermaid(info['name'])}\\n({info['type']})"
-        desc = sanitize_for_mermaid(info["description"]).replace("\n", " ")
-        return f'{comp_id}["{name_type}\\n{desc}"]'
+#     def render_component(comp_id: str, info: Dict) -> str:
+#         """
+#         Returns a Mermaid node definition, e.g.:
+#           comp_id["Name\n(Type)\nDescription"]
+#         """
+#         name_type = f"{sanitize_for_mermaid(info['name'])}\\n({info['type']})"
+#         desc = sanitize_for_mermaid(info["description"]).replace("\n", " ")
+#         return f'{comp_id}["{name_type}\\n{desc}"]'
 
-    # 5b. Render each trust boundary as a subgraph
-    for tb in trust_boundaries:
-        b_name_sanitized = sanitize_for_mermaid(tb.name)
-        b_desc_sanitized = sanitize_for_mermaid(tb.description)
-        subgraph_id = b_name_sanitized.replace(" ", "_")
+#     # 5b. Render each trust boundary as a subgraph
+#     for tb in trust_boundaries:
+#         b_name_sanitized = sanitize_for_mermaid(tb.name)
+#         b_desc_sanitized = sanitize_for_mermaid(tb.description)
+#         subgraph_id = b_name_sanitized.replace(" ", "_")
 
-        mermaid_lines.append(
-            f'  subgraph {subgraph_id} ["{b_name_sanitized}\\n{b_desc_sanitized}"]'
-        )
+#         mermaid_lines.append(
+#             f'  subgraph {subgraph_id} ["{b_name_sanitized}\\n{b_desc_sanitized}"]'
+#         )
 
-        for comp_id in boundary_components_map[tb.name]:
-            if comp_id in components:
-                node_label = render_component(comp_id, components[comp_id])
-                mermaid_lines.append(f"    {node_label}")
-                placed_components.add(comp_id)
+#         for comp_id in boundary_components_map[tb.name]:
+#             if comp_id in components:
+#                 node_label = render_component(comp_id, components[comp_id])
+#                 mermaid_lines.append(f"    {node_label}")
+#                 placed_components.add(comp_id)
 
-        mermaid_lines.append("  end")
+#         mermaid_lines.append("  end")
 
-    # 5c. Render any components not in a boundary
-    for comp_id, info in components.items():
-        if comp_id not in placed_components:
-            mermaid_lines.append(f"  {render_component(comp_id, info)}")
+#     # 5c. Render any components not in a boundary
+#     for comp_id, info in components.items():
+#         if comp_id not in placed_components:
+#             mermaid_lines.append(f"  {render_component(comp_id, info)}")
 
-    # 6. Render edges for flows
-    for flow_id, flow_info in flows.items():
-        src = flow_info["source_id"]
-        dst = flow_info["destination_id"]
-        flow_name = sanitize_for_mermaid(flow_info["name"]).replace("\n", " ")
-        if src in components and dst in components:
-            mermaid_lines.append(f"  {src} -->|{flow_name}| {dst}")
+#     # 6. Render edges for flows
+#     for flow_id, flow_info in flows.items():
+#         src = flow_info["source_id"]
+#         dst = flow_info["destination_id"]
+#         flow_name = sanitize_for_mermaid(flow_info["name"]).replace("\n", " ")
+#         if src in components and dst in components:
+#             mermaid_lines.append(f"  {src} -->|{flow_name}| {dst}")
 
-    # 7. Return the final diagram string
-    return "\n".join(mermaid_lines)
+#     # 7. Return the final diagram string
+#     return "\n".join(mermaid_lines)
