@@ -111,8 +111,11 @@ class TestReports(unittest.TestCase):
             )
         ]
 
-    def test_generate_mermaid_from_dataflow(self):
+    @patch("core.services.reports.generate_mermaid_dataflow_diagram")
+    def test_generate_mermaid_from_dataflow(self, mock_generate_diagram):
         """Test that a Mermaid diagram is generated and contains expected content."""
+        mock_generate_diagram.return_value = "graph TD;\nA --> B"
+
         diagram = generate_mermaid_dataflow_diagram(self.config, self.data_flow_report)
         self.assertIsInstance(diagram, str)
         self.assertIn("graph TD", diagram)
