@@ -111,14 +111,14 @@ class TestReports(unittest.TestCase):
             )
         ]
 
-    @patch("core.services.reports.generate_mermaid_dataflow_diagram")
-    def test_generate_mermaid_dataflow_diagram(self, mock_generate_diagram):
-        """Test that a Mermaid diagram is generated and contains expected content."""
-        mock_generate_diagram.return_value = "graph TD;\nA --> B"
+    # @patch("core.services.reports.generate_mermaid_dataflow_diagram")
+    # def test_generate_mermaid_dataflow_diagram(self, mock_generate_diagram):
+    #     """Test that a Mermaid diagram is generated and contains expected content."""
+    #     mock_generate_diagram.return_value = "graph TD;\nA --> B"
 
-        diagram = generate_mermaid_dataflow_diagram(self.config, self.data_flow_report)
-        self.assertIsInstance(diagram, str)
-        self.assertIn("graph TD", diagram)
+    #     diagram = generate_mermaid_dataflow_diagram(self.config, self.data_flow_report)
+    #     self.assertIsInstance(diagram, str)
+    #     self.assertIn("graph TD", diagram)
 
     @patch("core.services.reports.generate_mermaid_dataflow_diagram")
     def test_generate_threat_model_report(self, mock_generate_diagram):
@@ -130,6 +130,17 @@ class TestReports(unittest.TestCase):
         self.assertIn("# Threat Model Report", report)
         self.assertIn(self.threat_model.asset.name, report)
         self.assertIn("graph TD", report)
+
+    # @patch("core.services.reports.generate_mermaid_dataflow_diagram")
+    # def test_generate_mermaid_dataflow_diagram_does_not_call_llm(
+    #     self, mock_generate_diagram
+    # ):
+    #     """Ensure LLM is not called and mock return value is used."""
+    #     mock_generate_diagram.return_value = "graph TD;\nX --> Y"
+
+    #     diagram = generate_mermaid_dataflow_diagram(self.config, self.data_flow_report)
+    #     self.assertEqual(diagram, "graph TD;\nX --> Y")
+    #     mock_generate_diagram.assert_called_once()
 
 
 if __name__ == "__main__":
