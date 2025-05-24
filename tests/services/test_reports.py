@@ -112,7 +112,7 @@ class TestReports(unittest.TestCase):
         ]
 
     @patch("core.services.reports.generate_mermaid_dataflow_diagram")
-    def test_generate_mermaid_from_dataflow(self, mock_generate_diagram):
+    def test_generate_mermaid_dataflow_diagram(self, mock_generate_diagram):
         """Test that a Mermaid diagram is generated and contains expected content."""
         mock_generate_diagram.return_value = "graph TD;\nA --> B"
 
