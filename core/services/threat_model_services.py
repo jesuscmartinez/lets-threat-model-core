@@ -56,10 +56,6 @@ async def generate_threat_model(
             threat for report_threats in threat_lists for threat in report_threats
         ]
 
-        # diagrams = diagrams + [
-        #     generate_mermaid_dataflow_diagram(report) for report in data_flow_reports
-        # ]
-
         threat_model_data = await generate_threat_model_data(threat_model, config)
         threat_model.name = threat_model_data["title"]
         threat_model.summary = threat_model_data["summary"]
