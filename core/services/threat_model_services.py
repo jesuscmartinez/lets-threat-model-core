@@ -1,5 +1,6 @@
 from pathlib import Path
 from pydantic import SecretStr
+from core.agents.diagram_agent import DiagramAgent
 from core.agents.repo_data_flow_agent import DataFlowAgent
 from core.agents.threat_model_agent import ThreatModelAgent
 from core.models.dtos.Asset import Asset
@@ -55,10 +56,6 @@ async def generate_threat_model(
             threat for report_threats in threat_lists for threat in report_threats
         ]
 
-        # diagrams = diagrams + [
-        #     generate_mermaid_dataflow_diagram(report) for report in data_flow_reports
-        # ]
-
         threat_model_data = await generate_threat_model_data(threat_model, config)
         threat_model.name = threat_model_data["title"]
         threat_model.summary = threat_model_data["summary"]
@@ -85,7 +82,7 @@ async def generate_data_flow(
         else:
             raise ValueError("Repository must have either a local_path or a URL.")
 
-        report = build_data_flow_report(repository, end_state)
+        report = build_data_flow_report(config, repository, end_state)
         logger.info(
             f"✅ Finished data flow generation for repository: {repository.name}"
         )
@@ -212,9 +209,29 @@ def generate_data_flow_state() -> dict:
     }
 
 
-def build_data_flow_report(repository: Repository, end_state: dict) -> DataFlowReport:
+def generate_dataflow_diagram(
+    config: ThreatModelConfig, report: AgentDataFlowReport
+) -> Optional[str]:
+    # Initialize the diagram agent
+    diagram_agent = DiagramAgent(
+        model=ChatModelManager.get_model(
+            provider=config.llm_provider, model=config.report_agent_llm
+        )
+    )
+
+    # Example state for the workflow
+    state = {"data_flow_report": report}
+
+    return diagram_agent.get_workflow().invoke(input=state)["mermaid_diagram"]
+
+
+def build_data_flow_report(
+    config: ThreatModelConfig, repository: Repository, end_state: dict
+) -> DataFlowReport:
     """Builds a DataFlowReport from the final agent end_state."""
     agent_data_flow = AgentDataFlowReport.model_validate(end_state["data_flow_report"])
+
+    diagram = generate_dataflow_diagram(config, agent_data_flow)
 
     report = DataFlowReport.model_validate(
         obj={
@@ -226,6 +243,7 @@ def build_data_flow_report(repository: Repository, end_state: dict) -> DataFlowR
             "should_not_review": list(end_state.get("should_not_review", [])),
             "should_review": list(end_state.get("should_review", [])),
             "reviewed": list(end_state.get("reviewed", [])),
+            "diagram": diagram if diagram else None,
         }
     )
 

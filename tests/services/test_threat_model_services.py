@@ -110,7 +110,7 @@ async def test_generate_threat_model(
         "core.services.threat_model_services.generate_threat_model_data",
         new_callable=AsyncMock,
     ) as mock_generate_threat_model_data, patch(
-        "core.services.reports.generate_mermaid_dataflow_diagram",
+        "core.services.threat_model_services.generate_dataflow_diagram",
         return_value="diagram",
     ):
         # Setup mock returns
@@ -199,6 +199,11 @@ async def test_generate_data_flow_local_repo(mocker, threat_model_config):
         return_value=mock_workflow,
     )
 
+    mocker.patch(
+        "core.services.threat_model_services.generate_dataflow_diagram",
+        return_value="mocked_diagram",
+    )
+
     # Act
     data_flow_report = await generate_data_flow(local_repo, threat_model_config)
 
@@ -257,6 +262,11 @@ async def test_process_remote_repository_calls_clone_repository(mocker):
     mock_create_agent = mocker.patch(
         "core.services.threat_model_services.create_data_flow_agent",
         return_value=mock_agent,
+    )
+
+    mocker.patch(
+        "core.agents.repo_data_flow_agent.DataFlowAgent.get_workflow",
+        return_value=mock_workflow,
     )
 
     # Act
