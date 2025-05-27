@@ -13,7 +13,6 @@ from core.services.threat_model_config import ThreatModelConfig
 from core.models.enums import AuthnType, DataClassification, StrideCategory, Level
 from pydantic import SecretStr
 from core.services.reports import (
-    generate_mermaid_dataflow_diagram,
     generate_threat_model_report,
 )
 
@@ -60,6 +59,7 @@ class TestReports(unittest.TestCase):
             could_review=[],
             should_not_review=[],
             could_not_review=[],
+            diagram="graph TD",
         )
 
         # Create a dummy Asset
@@ -111,36 +111,15 @@ class TestReports(unittest.TestCase):
             )
         ]
 
-    # @patch("core.services.reports.generate_mermaid_dataflow_diagram")
-    # def test_generate_mermaid_dataflow_diagram(self, mock_generate_diagram):
-    #     """Test that a Mermaid diagram is generated and contains expected content."""
-    #     mock_generate_diagram.return_value = "graph TD;\nA --> B"
-
-    #     diagram = generate_mermaid_dataflow_diagram(self.config, self.data_flow_report)
-    #     self.assertIsInstance(diagram, str)
-    #     self.assertIn("graph TD", diagram)
-
-    @patch("core.services.reports.generate_mermaid_dataflow_diagram")
-    def test_generate_threat_model_report(self, mock_generate_diagram):
+    def test_generate_threat_model_report(self):
         """Test that the Markdown report contains key sections and asset information."""
-        mock_generate_diagram.return_value = "graph TD;\nA-->B"
+        # mock_generate_diagram.return_value = "graph TD;\nA-->B"
 
         report = generate_threat_model_report(self.config, self.threat_model)
         self.assertIsInstance(report, str)
         self.assertIn("# Threat Model Report", report)
         self.assertIn(self.threat_model.asset.name, report)
         self.assertIn("graph TD", report)
-
-    # @patch("core.services.reports.generate_mermaid_dataflow_diagram")
-    # def test_generate_mermaid_dataflow_diagram_does_not_call_llm(
-    #     self, mock_generate_diagram
-    # ):
-    #     """Ensure LLM is not called and mock return value is used."""
-    #     mock_generate_diagram.return_value = "graph TD;\nX --> Y"
-
-    #     diagram = generate_mermaid_dataflow_diagram(self.config, self.data_flow_report)
-    #     self.assertEqual(diagram, "graph TD;\nX --> Y")
-    #     mock_generate_diagram.assert_called_once()
 
 
 if __name__ == "__main__":

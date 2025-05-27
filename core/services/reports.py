@@ -20,23 +20,23 @@ from uuid import uuid4
 from core.models.dtos.Threat import Threat
 
 
-def generate_mermaid_dataflow_diagram(
-    config: ThreatModelConfig, report: DataFlowReport
-) -> str:
-    # Initialize the diagram agent
-    diagram_agent = DiagramAgent(
-        model=ChatModelManager.get_model(
-            provider=config.llm_provider, model=config.report_agent_llm
-        )
-    )
+# def generate_mermaid_dataflow_diagram(
+#     config: ThreatModelConfig, report: DataFlowReport
+# ) -> str:
+#     # Initialize the diagram agent
+#     diagram_agent = DiagramAgent(
+#         model=ChatModelManager.get_model(
+#             provider=config.llm_provider, model=config.report_agent_llm
+#         )
+#     )
 
-    # Example state for the workflow
-    state = {"data_flow_report": report}
+#     # Example state for the workflow
+#     state = {"data_flow_report": report}
 
-    end_state = diagram_agent.get_workflow().invoke(input=state)
+#     end_state = diagram_agent.get_workflow().invoke(input=state)
 
-    # Return the mermaid diagram
-    return end_state["mermaid_diagram"]
+#     # Return the mermaid diagram
+#     return end_state["mermaid_diagram"]
 
 
 # def generate_mermaid_dataflow(dataflow_report: DataFlowReport) -> str:
@@ -117,11 +117,7 @@ def generate_threat_model_report(
         report += f"### Report {i}\n"
         report += f"**Overview:** {report_data.overview}\n\n"
 
-        diagram = generate_mermaid_dataflow_diagram(
-            config=threat_model_config, report=report_data
-        )
-        # diagram_2 = generate_mermaid_dataflow_diagram(report_data)
-        report += f"### Diagram {i}\n```mermaid\n{diagram}\n```\n\n"
+        report += f"### Diagram {i}\n```mermaid\n{report_data.diagram}\n```\n\n"
 
         # External Entities
         if report_data.external_entities:

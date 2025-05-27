@@ -110,7 +110,7 @@ async def test_generate_threat_model(
         "core.services.threat_model_services.generate_threat_model_data",
         new_callable=AsyncMock,
     ) as mock_generate_threat_model_data, patch(
-        "core.services.reports.generate_mermaid_dataflow_diagram",
+        "core.services.threat_model_services.generate_dataflow_diagram",
         return_value="diagram",
     ):
         # Setup mock returns

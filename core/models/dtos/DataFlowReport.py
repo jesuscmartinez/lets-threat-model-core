@@ -315,6 +315,10 @@ class DataFlowReport(AgentDataFlowReport):
     could_not_review: List[File] = Field(
         default_factory=list, description="Set of Files that could not be reviewed."
     )
+    diagram: str = Field(
+        default="",
+        description="A string representation of the diagram for visualization purposes.",
+    )
 
     def __hash__(self):
         return hash(self.id)
