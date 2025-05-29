@@ -12,7 +12,7 @@ from langchain_core.prompts import (
     HumanMessagePromptTemplate,
     ChatPromptTemplate,
 )
-from core.agents.agent_tools import AgentHelper, async_invoke_with_retry
+from core.agents.agent_tools import AgentHelper, ainvoke_with_retry
 from langgraph.graph import StateGraph, START, END
 
 
@@ -185,7 +185,7 @@ class ThreatModelDataAgent:
             }
 
             # Invoke the chain with retry logic
-            result = await async_invoke_with_retry(chain, chain_inputs)
+            result = await ainvoke_with_retry(chain, chain_inputs)
 
             # Ensure result is parsed correctly
             if isinstance(result, dict):

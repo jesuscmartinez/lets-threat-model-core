@@ -1,9 +1,11 @@
 from pathlib import Path
 from pydantic import SecretStr
 from core.agents.diagram_agent import DiagramAgent
+from core.agents.mitre_attack_agent import MitreAttackAgent
 from core.agents.repo_data_flow_agent import DataFlowAgent
 from core.agents.threat_model_agent import ThreatModelAgent
 from core.models.dtos.Asset import Asset
+from core.models.dtos.MitreAttack import AgentAttack, Attack
 from core.models.dtos.ThreatModel import ThreatModel
 from core.models.dtos.DataFlowReport import DataFlowReport, AgentDataFlowReport
 from core.models.dtos.Threat import Threat, AgentThreat
@@ -36,6 +38,7 @@ async def generate_threat_model(
         repos=repos,
         data_flow_reports=[],
         threats=[],
+        attacks=[],
     )
 
     # Generate data flow reports concurrently
@@ -45,6 +48,16 @@ async def generate_threat_model(
     threat_model.data_flow_reports = data_flow_reports
 
     if not config.categorize_only:
+
+        # Generate miter att&ck concurrently
+        attack_lists = await asyncio.gather(
+            *(generate_mitre_attack(report, config) for report in data_flow_reports)
+        )
+
+        # Flatten the list of threats
+        threat_model.attacks = [
+            attack for report_attacks in attack_lists for attack in report_attacks
+        ]
 
         # Generate threats concurrently
         threat_lists = await asyncio.gather(
@@ -91,6 +104,52 @@ async def generate_data_flow(
 
     except Exception as e:
         logger.exception(f"❌ Error during data flow generation: {str(e)}")
+        raise
+
+
+async def generate_mitre_attack(
+    data_flow_report: DataFlowReport, config: ThreatModelConfig
+) -> List[Attack]:
+    """Generates a MITRE ATT&CK for a given data flow report."""
+    logger.info(
+        f"🚀 Starting MITRE ATT&CK generation for Data Flow Report: {data_flow_report.id})"
+    )
+    try:
+        mitre_attack_agent = MitreAttackAgent(
+            model=ChatModelManager.get_model(
+                provider=config.llm_provider, model=config.review_agent_llm
+            )
+        )
+
+        seralized_report = AgentDataFlowReport(
+            overview=data_flow_report.overview,
+            external_entities=data_flow_report.external_entities,
+            processes=data_flow_report.processes,
+            data_stores=data_flow_report.data_stores,
+            trust_boundaries=data_flow_report.trust_boundaries,
+        ).model_dump(mode="json")
+
+        state = {
+            "data_flow_report": seralized_report,
+            "attacks": [],
+        }
+        end_state = await mitre_attack_agent.get_workflow().ainvoke(input=state)
+
+        attacks = end_state.get("attacks", [])
+
+        logger.info(f"✅ Finished MITRE ATT&CK generation for data flow report.)")
+        return [
+            Attack.model_validate(
+                {
+                    "id": uuid.uuid4(),
+                    "data_flow_report_id": data_flow_report.id,
+                    **AgentAttack.model_validate(attack).model_dump(exclude_unset=True),
+                }
+            )
+            for attack in attacks
+        ]
+    except Exception as e:
+        logger.exception(f"❌ Error during MITRE ATT&CK generation: {str(e)}")
         raise
 
 

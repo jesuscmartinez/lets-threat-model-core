@@ -6,6 +6,7 @@ from jsonschema import validate, ValidationError
 
 from core.models.dtos.Asset import Asset
 from core.models.dtos.DataFlowReport import DataFlowReport, ExternalEntity
+from core.models.dtos.MitreAttack import Attack
 from core.models.dtos.Threat import Threat
 from core.models.dtos.ThreatModel import ThreatModel
 from core.models.enums import StrideCategory, Level, AuthnType, DataClassification
@@ -40,18 +41,12 @@ class TestSarifLogSchemaValidation(unittest.TestCase):
             url="test repo",
         )
 
-        # Create a dummy component.
+        # Create a dummy ExternalEntity with only required fields.
         cls.dummy_component = ExternalEntity(
             id=uuid4(),
             name="My Component",
-            description="desc",
-            entity_type="Component",
-            organization="Test Organization",
-            role="Test Role",
-            privilege_level="Low",
-            authentication_mechanism="None",
-            trust_level="Medium",
-            attack_surface_notes="No significant attack surface",
+            description="A dummy external entity component.",
+            data_flows=[],
         )
 
         # Create a DataFlowReport using the imported DataFlowReport class.
@@ -82,7 +77,6 @@ class TestSarifLogSchemaValidation(unittest.TestCase):
             mitigations=["Mitigation1"],
         )
 
-        # Create a ThreatModel using the above Asset, Repository, DataFlowReport, and Threat.
         cls.threat_model = ThreatModel(
             id=uuid4(),
             name="Test Threat Model",
@@ -91,6 +85,16 @@ class TestSarifLogSchemaValidation(unittest.TestCase):
             repos=[cls.repo],
             data_flow_reports=[cls.data_flow_report],
             threats=[cls.dummy_threat],
+            attacks=[
+                Attack(
+                    attack_tactic="Execution",
+                    technique_id="T1059",
+                    technique_name="Command and Scripting Interpreter",
+                    component_id=uuid4(),
+                    reason_for_relevance="Simulated attack for testing.",
+                    mitigation="No mitigation required for test.",
+                )
+            ],
         )
         # Load SARIF 2.1.0 schema
         schema_url = "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json"

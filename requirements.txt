@@ -8,3 +8,4 @@ langgraph==0.3.8
 graphviz==0.20.3
 transformers==4.50.0
 sarif-om==1.0.4
+trustcall==0.0.39

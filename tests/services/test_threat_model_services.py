@@ -1,3 +1,4 @@
+from re import L
 import uuid
 import pytest
 import json
@@ -9,6 +10,7 @@ from pydantic import SecretStr
 # Import models and services from your project.
 from core.models.dtos.Asset import Asset
 from core.models.dtos.Repository import Repository
+from core.models.dtos.MitreAttack import Attack
 from core.models.dtos.ThreatModel import ThreatModel
 from core.models.dtos.DataFlowReport import DataFlowReport
 from core.models.dtos.Threat import Threat
@@ -240,6 +242,7 @@ async def test_process_remote_repository_calls_clone_repository(mocker):
         categorize_token_buffer=100,
         categorize_only=False,
         completion_threshold=0.9,
+        review_agent_llm="review_model",
     )
 
     # Patch clone_repository and create_data_flow_agent
@@ -358,6 +361,21 @@ async def test_generate_threats(
 async def test_generate_threat_model_data(
     mocker, threat_model_config, test_asset, test_repos
 ):
+    # Add a dummy Threat to the threats field as per instruction
+    dummy_threat = {
+        "id": uuid4(),
+        "data_flow_report_id": uuid4(),
+        "name": "Dummy Threat",
+        "description": "This is a dummy threat for testing.",
+        "stride_category": "Tampering",
+        "component_names": ["Dummy Component"],
+        "component_ids": [uuid4()],
+        "attack_vector": "Network",
+        "impact_level": "High",
+        "risk_rating": "Critical",
+        "mitigations": ["Mitigation1"],
+    }
+
     threat_model = ThreatModel(
         id=uuid.UUID("4fab6f10-fe7d-444c-a6ff-0cb81a0d8c20"),
         name="Test Model",
@@ -365,7 +383,31 @@ async def test_generate_threat_model_data(
         asset=test_asset,
         repos=test_repos,
         data_flow_reports=[],
-        threats=[],
+        threats=[
+            Threat(
+                id=uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+                data_flow_report_id=uuid.UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+                name="Dummy Threat",
+                description="This is a dummy threat for testing.",
+                stride_category=StrideCategory.TAMPERING,
+                component_names=["Dummy Component"],
+                component_ids=[uuid.UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")],
+                attack_vector="Network",
+                impact_level=Level.HIGH,
+                risk_rating=Level.CRITICAL,
+                mitigations=["Mitigation1"],
+            )
+        ],
+        attacks=[
+            Attack(
+                attack_tactic="Execution",
+                technique_id="T1059",
+                technique_name="Command and Scripting Interpreter",
+                component_id=uuid.UUID("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+                reason_for_relevance="Simulated attack for testing.",
+                mitigation="Simulated mitigation for testing.",
+            )
+        ],
     )
 
     mock_result = {

@@ -9,6 +9,7 @@ from core.models.dtos.ThreatModel import ThreatModel
 from core.models.dtos.Threat import Threat
 from core.models.dtos.Asset import Asset
 from core.models.dtos.Repository import Repository
+from core.models.dtos.MitreAttack import Attack
 from core.services.threat_model_config import ThreatModelConfig
 from core.models.enums import AuthnType, DataClassification, StrideCategory, Level
 from pydantic import SecretStr
@@ -91,6 +92,18 @@ class TestReports(unittest.TestCase):
             repos=[dummy_repo],
             data_flow_reports=[self.data_flow_report],
             threats=[],
+            attacks=[
+                # Replace with an instance of the Attack class
+                # Adjust the import if Attack is in a different module
+                Attack(
+                    attack_tactic="Execution",
+                    component_id=uuid4(),
+                    technique_id="T1059",
+                    technique_name="Command and Scripting Interpreter",
+                    reason_for_relevance="Simulated attack for testing.",
+                    mitigation="Simulated mitigation for testing.",
+                )
+            ],
         )
 
         # Create a dummy Threat for testing SARIF generation.

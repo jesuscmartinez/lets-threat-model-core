@@ -26,7 +26,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langgraph.graph import StateGraph, START, END
 from core.agents.agent_tools import (
     AgentHelper,
-    async_invoke_with_retry,
+    ainvoke_with_retry,
     invoke_with_retry,
     is_rate_limit_error,
 )
@@ -393,7 +393,7 @@ class DataFlowAgent:
                     should_review=[], could_review=[], should_not_review=[]
                 )
             file_data = [{"file_path": fp} for fp in batch]
-            result = await async_invoke_with_retry(
+            result = await ainvoke_with_retry(
                 chain, {"file_paths": json.dumps(file_data, sort_keys=True)}
             )
             return result

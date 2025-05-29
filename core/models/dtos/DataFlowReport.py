@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List, Dict, Optional
 from pydantic import BaseModel, Field
 from uuid import UUID, uuid4
 from core.models.dtos.File import File
@@ -335,3 +335,20 @@ class DataFlowReport(AgentDataFlowReport):
 
     class Config:
         from_attributes = True
+
+
+class Result(BaseModel):
+    dfd_component: str = Field(..., description="The DFD component being analyzed.")
+    attack_tactic: str = Field(
+        ..., description="The MITRE ATT&CK tactic relevant to this component."
+    )
+    technique_id_and_name: str = Field(
+        ..., description="The MITRE ATT&CK technique ID and name."
+    )
+    reason_for_relevance: str = Field(
+        ...,
+        description="Explanation of why this technique is relevant to the component.",
+    )
+    mitigation: Optional[str] = Field(
+        None, description="Optional suggested mitigation for this technique."
+    )

@@ -9,6 +9,8 @@ from tenacity import (
     stop_after_attempt,
     before_sleep_log,
 )
+from langchain_core.runnables.base import Runnable
+from langchain_core.runnables.utils import Input
 
 
 logger = logging.getLogger(__name__)
@@ -222,12 +224,12 @@ def is_rate_limit_error(exception: BaseException) -> bool:
     before_sleep=before_sleep_log(logger, logging.WARNING),
     reraise=True,  # Raise exception after all retries fail
 )
-async def async_invoke_with_retry(chain, inputs: dict):
+async def ainvoke_with_retry(chain: Runnable, input: Input):
     # Optionally serialize inputs (if needed)
     # inputs = {k: json.dumps(v) for k, v in inputs.items()}  # Uncomment if your inputs need serialization
 
-    logger.debug(f"Invoking chain with inputs: {inputs}")
-    return await chain.ainvoke(inputs)
+    logger.debug(f"Invoking chain with inputs: {input}")
+    return await chain.ainvoke(input)
 
 
 @retry(
@@ -237,9 +239,9 @@ async def async_invoke_with_retry(chain, inputs: dict):
     before_sleep=before_sleep_log(logger, logging.WARNING),
     reraise=True,  # Raise the exception if it keeps failing
 )
-def invoke_with_retry(chain, inputs: dict):
+def invoke_with_retry(chain: Runnable, input: Input):
     """
     Wrapper function to retry chain.invoke() on rate limit (HTTP 429) errors.
     """
-    logger.debug(f"Invoking chain synchronously with inputs: {inputs}")
-    return chain.invoke(inputs)
+    logger.debug(f"Invoking chain synchronously with inputs: {input}")
+    return chain.invoke(input)
