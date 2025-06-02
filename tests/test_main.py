@@ -91,15 +91,15 @@ class TestThreatModelGeneration(unittest.IsolatedAsyncioTestCase):
         )
 
         dummy_repo = Repository(
-            id=uuid4(),
+            uuid=uuid4(),
             name="Repo",
             description="desc",
             url="https://repo.com",
-            asset_id=dummy_asset.id,
+            asset_uuid=dummy_asset.uuid,
         )
         dummy_data_flow_report = DataFlowReport(
-            id=uuid4(),
-            repository_id=dummy_repo.id,
+            uuid=uuid4(),
+            repository_uuid=dummy_repo.uuid,
             external_entities=[],
             processes=[],
             data_stores=[],
@@ -112,21 +112,25 @@ class TestThreatModelGeneration(unittest.IsolatedAsyncioTestCase):
             diagram="graph TD",
         )
         dummy_threat = Threat(
-            id=uuid4(),
-            data_flow_report_id=dummy_data_flow_report.id,
+            uuid=uuid4(),
+            data_flow_report_uuid=dummy_data_flow_report.uuid,
             name="Dummy Threat",
             description="Threat desc",
             stride_category=StrideCategory.REPUDIATION,
             component_names=["Comp"],
-            component_ids=[uuid4()],
+            component_uuids=[uuid4()],
             attack_vector="Network",
             impact_level=Level.HIGH,
             risk_rating=Level.MEDIUM,
             mitigations=["Mitigation A"],
         )
         dummy_attack = Attack(
-            id=uuid4(),
-            component_id=uuid4(),
+            uuid=uuid4(),
+            component_uuid=uuid4(),
+            component="Dummy Component",
+            url="https://example.com/component",
+            parent_id="T1059",
+            parent_name="Dummy Parent",
             attack_tactic="Execution",
             technique_id="T1059",
             technique_name="Command and Scripting Interpreter",
@@ -134,7 +138,7 @@ class TestThreatModelGeneration(unittest.IsolatedAsyncioTestCase):
             mitigation="Use application whitelisting to block unknown scripts.",
         )
         dummy_threat_model = ThreatModel(
-            id=uuid4(),
+            uuid=uuid4(),
             name="Dummy Threat Model",
             summary="Dummy summary",
             asset=dummy_asset,

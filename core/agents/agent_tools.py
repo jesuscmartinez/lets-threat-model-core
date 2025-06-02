@@ -25,7 +25,7 @@ class AgentHelper:
         counter (int): A counter for generating numbered placeholders.
     Methods:
         convert_uuids_to_ids(data_flow_report: dict) -> dict:
-            Replaces all UUIDs in 'id', '_id', and '_ids' fields with numbered placeholders ('uuid_X', 'uuid_2', etc.)
+            Replaces all UUIDs in 'uuid', '_uuid', and '_uuids' fields with numbered placeholders ('uuid_X', 'uuid_2', etc.)
         convert_ids_to_uuids(data_flow_report: dict) -> dict:
     """
 
@@ -36,15 +36,15 @@ class AgentHelper:
 
     def convert_uuids_to_ids(self, data_flow_report: dict) -> dict:
         """
-        Replaces all UUIDs in 'id', '_id', and '_ids' fields with numbered placeholders ('uuid_1', 'uuid_2', etc.)
+        Replaces all UUIDs in 'uuid', '_uuid', and '_uuids' fields with numbered placeholders ('uuid_1', 'uuid_2', etc.)
         and stores the mapping for restoration.
         """
 
         def replace_uuids(obj):
-            """First pass: Replace all 'id' fields with 'uuid_X' values."""
+            """First pass: Replace all 'uuid' fields with 'uuid_X' values."""
             if isinstance(obj, dict):
-                if "id" in obj and isinstance(obj["id"], str):
-                    old_id = obj["id"]
+                if "uuid" in obj and isinstance(obj["uuid"], str):
+                    old_id = obj["uuid"]
                     if old_id not in self.uuid_to_numbered_mapping:
                         new_id = f"uuid_{self.counter}"
                         self.uuid_to_numbered_mapping[old_id] = new_id
@@ -54,7 +54,7 @@ class AgentHelper:
                         self.counter += 1
                         logger.debug(f"Converted {old_id} -> {new_id}")
 
-                    obj["id"] = self.uuid_to_numbered_mapping[old_id]
+                    obj["uuid"] = self.uuid_to_numbered_mapping[old_id]
 
                 for key, value in obj.items():
                     obj[key] = replace_uuids(value)
@@ -72,12 +72,12 @@ class AgentHelper:
 
                 # 2) Now do the "_id" or "_ids" replacement
                 for key, value in list(obj.items()):
-                    if key.endswith("_id") and isinstance(value, str):
+                    if key.endswith("_uuid") and isinstance(value, str):
                         new_val = str(self.uuid_to_numbered_mapping.get(value, value))
                         obj[key] = new_val
                         logger.debug(f"Updated reference {key}: {value} -> {new_val}")
 
-                    elif key.endswith("_ids") and isinstance(value, list):
+                    elif key.endswith("_uuids") and isinstance(value, list):
                         updated_list = [
                             str(self.uuid_to_numbered_mapping.get(cid, cid))
                             for cid in value
@@ -107,7 +107,7 @@ class AgentHelper:
 
     def convert_ids_to_uuids(self, data_flow_report: dict) -> dict:
         """
-        Converts all 'id' placeholders (e.g., 'uuid_1') back to their original UUIDs if known.
+        Converts all 'uuid' placeholders (e.g., 'uuid_1') back to their original UUIDs if known.
         If the placeholder is not found in self.numbered_to_uuid_mapping, a new UUID is generated
         once and reused for any subsequent references to the same placeholder.
         """
@@ -128,16 +128,16 @@ class AgentHelper:
 
         def replace_numbered_ids(obj):
             """
-            First pass: Replace all literal 'id' fields with either known or newly generated UUIDs.
+            First pass: Replace all literal 'uuid' fields with either known or newly generated UUIDs.
             """
             if isinstance(obj, dict):
-                if "id" in obj and isinstance(obj["id"], str) and obj["id"]:
-                    numbered_id = obj["id"]
+                if "uuid" in obj and isinstance(obj["uuid"], str) and obj["uuid"]:
+                    numbered_id = obj["uuid"]
                     # Get (or create) the corresponding UUID
                     original_uuid = get_or_create_uuid_for_placeholder(numbered_id)
-                    obj["id"] = original_uuid
+                    obj["uuid"] = original_uuid
                     logger.debug(
-                        f"Replaced 'id' placeholder {numbered_id} -> {original_uuid}"
+                        f"Replaced 'uuid' placeholder {numbered_id} -> {original_uuid}"
                     )
 
                 # Recurse into nested structures
@@ -151,20 +151,20 @@ class AgentHelper:
 
         def update_uuid_references(obj: Any):
             """
-            Second pass: Update any fields ending in '_id' or '_ids'
+            Second pass: Update any fields ending in '_uuid' or '_uuids'
             to their corresponding UUIDs (existing or newly generated).
             """
             if isinstance(obj, dict):
                 # Process '_id' fields
                 for key, value in list(obj.items()):
-                    if key.endswith("_id") and isinstance(value, str):
+                    if key.endswith("_uuid") and isinstance(value, str):
                         new_val = get_or_create_uuid_for_placeholder(value)
                         obj[key] = new_val
                         logger.debug(f"Updated reference {key}: {value} -> {new_val}")
 
-                # Process '_ids' fields
+                # Process '_uuids' fields
                 for key, value in list(obj.items()):
-                    if key.endswith("_ids") and isinstance(value, list):
+                    if key.endswith("_uuids") and isinstance(value, list):
                         updated_list = [
                             get_or_create_uuid_for_placeholder(cid) for cid in value
                         ]

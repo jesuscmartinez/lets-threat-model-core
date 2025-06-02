@@ -1,3 +1,5 @@
+import re
+import uuid
 import pytest
 import asyncio
 from uuid import uuid4
@@ -14,6 +16,10 @@ from core.models.dtos.MitreAttack import AgentAttack
 class DummyModel(BaseChatModel):
     def with_structured_output(self, schema):
         # Stub for chaining prompts; return self for simplicity
+        return self
+
+    def bind_tools(self, tools):
+        # Stub for binding tools; return self for simplicity
         return self
 
     def __ror__(self, other):
@@ -71,12 +77,17 @@ async def test_process_component_success(monkeypatch, agent):
         return Result(
             attacks=[
                 AgentAttack(
-                    component_id=uuid4(),
+                    component_uuid=uuid.UUID("16ad7dc6-05ec-442c-ae9a-488eebc79c13"),
+                    component="comp1",
                     attack_tactic="Tactic",
                     technique_id="T1234",
                     technique_name="Some Technique",
                     reason_for_relevance="Relevant for test",
                     mitigation="Test mitigation",
+                    url="http://example.com",
+                    is_subtechnique=False,
+                    parent_id="",
+                    parent_name="",
                 )
             ]
         )
@@ -129,3 +140,53 @@ def test_get_workflow(agent):
     workflow = agent.get_workflow()
     # Ensure a workflow object is returned
     assert workflow is not None
+
+
+@pytest.mark.asyncio
+async def test_analyze_integration_and_error(monkeypatch, agent: MitreAttackAgent):
+    # Prepare a report with two components under 'processes'
+    comp_good = {"name": "good"}
+    comp_bad = {"name": "bad"}
+    state = AttackGraphStateModel(data_flow_report={"processes": [comp_good, comp_bad]})
+    # Stub ID conversion helpers to be no-ops
+    monkeypatch.setattr(agent.agent_helper, "convert_uuids_to_ids", lambda x: x)
+    monkeypatch.setattr(agent.agent_helper, "convert_ids_to_uuids", lambda x: x)
+
+    # Stub _process_component: one returns attacks, one raises
+    async def proc(comp, report, chain):
+        if comp["name"] == "good":
+            return [
+                AgentAttack(
+                    component_uuid=uuid.UUID("16ad7dc6-05ec-442c-ae9a-488eebc79c13"),
+                    component="comp",
+                    attack_tactic="tac",
+                    technique_id="T1",
+                    technique_name="Name",
+                    reason_for_relevance="reason",
+                    mitigation="mit",
+                    url="u",
+                    is_subtechnique=False,
+                    parent_id="",
+                    parent_name="",
+                )
+            ]
+        else:
+            raise RuntimeError("failure")
+
+    monkeypatch.setattr(agent, "_process_component", proc)
+    new_state = await agent.analyze(state)
+    # Only the successful 'good' component should be included
+    assert len(new_state.attacks) == 1
+    atk = new_state.attacks[0]
+    # Verify that all key fields are preserved
+    assert atk.component_uuid == uuid.UUID("16ad7dc6-05ec-442c-ae9a-488eebc79c13")
+    assert atk.component == "comp"
+    assert atk.attack_tactic == "tac"
+    assert atk.technique_id == "T1"
+    assert atk.technique_name == "Name"
+    assert atk.reason_for_relevance == "reason"
+    assert atk.mitigation == "mit"
+    assert atk.url == "u"
+    assert atk.is_subtechnique is False
+    assert atk.parent_id == ""
+    assert atk.parent_name == ""

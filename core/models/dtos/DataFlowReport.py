@@ -1,6 +1,9 @@
+from re import A
 from typing import List, Dict, Optional
 from pydantic import BaseModel, Field
 from uuid import UUID, uuid4
+from core.models.dtos.MitreAttack import Attack
+from core.models.dtos.Threat import Threat
 from core.models.dtos.File import File
 import os
 import logging
@@ -19,21 +22,21 @@ class Component(BaseModel):
     Represents a system component, which could be a process, data store, or external entity.
     """
 
-    id: UUID = Field(default_factory=uuid4, description="UUID for the component.")
+    uuid: UUID = Field(default_factory=uuid4, description="UUID for the component.")
     name: str = Field(..., description="Name of the component (e.g., 'Login Flow').")
     description: str = Field(
         ..., description="Description of what the component represents."
     )
 
     def __hash__(self):
-        return hash(self.id)
+        return hash(self.uuid)
 
     def __eq__(self, other):
-        return isinstance(other, Component) and self.id == other.id
+        return isinstance(other, Component) and self.uuid == other.uuid
 
     def model_dump(self, **kwargs):
         data = super().model_dump(**kwargs)
-        data["id"] = str(self.id)
+        data["uuid"] = str(self.uuid)
 
         return data
 
@@ -43,27 +46,27 @@ class DataFlow(Component):
     Describes a data flow between components, including its destination, type of data, and direction.
     """
 
-    destination_id: UUID = Field(
-        ..., description="The target component_id of the data flow."
+    destination_uuid: UUID = Field(
+        ..., description="The target component uuid of the data flow."
     )
     data_type: str = Field(
-        ...,
+        default="",
         description="A description of the data being transferred (e.g., 'Product Review Data').",
     )
     direction: str = Field(
-        ...,
+        default="",
         description="Indicates whether the flow is a read, incoming, outgoing, write or bidirectional relative to the source.",
     )
 
     def __hash__(self):
-        return hash(self.id)
+        return hash(self.uuid)
 
     def __eq__(self, other):
-        return isinstance(other, DataFlow) and self.id == other.id
+        return isinstance(other, DataFlow) and self.uuid == other.uuid
 
     def model_dump(self, **kwargs):
         data = super().model_dump(**kwargs)
-        data["destination_id"] = str(self.destination_id)
+        data["destination_uuid"] = str(self.destination_uuid)
 
         return data
 
@@ -79,10 +82,10 @@ class Node(Component):
     )
 
     def __hash__(self):
-        return hash(self.id)
+        return hash(self.uuid)
 
     def __eq__(self, other):
-        return isinstance(other, Node) and self.id == other.id
+        return isinstance(other, Node) and self.uuid == other.uuid
 
 
 class ExternalEntity(Node):
@@ -92,10 +95,10 @@ class ExternalEntity(Node):
     """
 
     def __hash__(self):
-        return hash(self.id)
+        return hash(self.uuid)
 
     def __eq__(self, other):
-        return isinstance(other, ExternalEntity) and self.id == other.id
+        return isinstance(other, ExternalEntity) and self.uuid == other.uuid
 
 
 class Process(Node):
@@ -113,10 +116,10 @@ class Process(Node):
     )
 
     def __hash__(self):
-        return hash(self.id)
+        return hash(self.uuid)
 
     def __eq__(self, other):
-        return isinstance(other, Process) and self.id == other.id
+        return isinstance(other, Process) and self.uuid == other.uuid
 
 
 class DataStore(Node):
@@ -133,10 +136,10 @@ class DataStore(Node):
     )
 
     def __hash__(self):
-        return hash(self.id)
+        return hash(self.uuid)
 
     def __eq__(self, other):
-        return isinstance(other, DataStore) and self.id == other.id
+        return isinstance(other, DataStore) and self.uuid == other.uuid
 
 
 class TrustBoundary(Component):
@@ -145,22 +148,22 @@ class TrustBoundary(Component):
     This helps delineate which components fall within the same security perimeter.
     """
 
-    component_ids: List[UUID] = Field(
+    component_uuids: List[UUID] = Field(
         default_factory=list,
-        description="Set of component_ids within this trust boundary, referencing existing components.",
+        description="Set of component_uuids within this trust boundary, referencing existing components.",
     )
 
     def model_dump(self, **kwargs):
         data = super().model_dump(**kwargs)
-        data["component_ids"] = [str(id) for id in self.component_ids]
+        data["component_uuids"] = [str(id) for id in self.component_uuids]
 
         return data
 
     def __hash__(self):
-        return hash(self.id)
+        return hash(self.uuid)
 
     def __eq__(self, other):
-        return isinstance(other, TrustBoundary) and self.id == other.id
+        return isinstance(other, TrustBoundary) and self.uuid == other.uuid
 
 
 class AgentDataFlowReport(BaseModel):
@@ -204,15 +207,15 @@ class AgentDataFlowReport(BaseModel):
                 "overview": "This is an example of a data flow report.",
                 "external_entities": [
                     {
-                        "id": "uuid_1",
+                        "uuid": "uuid_1",
                         "name": "User",
                         "description": "A person interacting with the system.",
                         "data_flows": [
                             {
-                                "id": "uuid_2",
+                                "uuid": "uuid_2",
                                 "name": "User Login Flow",
                                 "description": "Data flow from the client to authentication process.",
-                                "destination_id": "uuid_3",
+                                "destination_uuid": "uuid_3",
                                 "data_type": "Login Credentials",
                                 "direction": "outgoing",
                             }
@@ -221,14 +224,14 @@ class AgentDataFlowReport(BaseModel):
                 ],
                 "processes": [
                     {
-                        "id": "uuid_3",
+                        "uuid": "uuid_3",
                         "name": "Authentication",
                         "description": "Handles user login.",
                         "input_data": ["Username", "Password"],
                         "output_data": ["JWT Token"],
                         "data_flows": [
                             {
-                                "id": "uuid_5",
+                                "uuid": "uuid_5",
                                 "name": "User Login Flow",
                                 "description": "Data flow from the frontend to authentication service.",
                                 "destination_id": "uuid_4",
@@ -236,10 +239,10 @@ class AgentDataFlowReport(BaseModel):
                                 "direction": "outgoing",
                             },
                             {
-                                "id": "uuid_6",
+                                "uuid": "uuid_6",
                                 "name": "Authentication Flow",
                                 "description": "Data flow from the authentication service to the user",
-                                "destination_id": "uuid_1",
+                                "destination_uuid": "uuid_1",
                                 "data_type": "Authentication Token",
                                 "direction": "outgoing",
                             },
@@ -248,17 +251,17 @@ class AgentDataFlowReport(BaseModel):
                 ],
                 "data_stores": [
                     {
-                        "id": "uuid_4",
+                        "uuid": "uuid_4",
                         "name": "User Database",
                         "description": "Stores all user data.",
                         "data_inputs": ["User registration details"],
                         "data_outputs": ["User authentication details"],
                         "data_flows": [
                             {
-                                "id": "uuid_7",
+                                "uuid": "uuid_7",
                                 "name": "User Login Data",
                                 "description": "Data flow from the data store service to the authentication process.",
-                                "destination_id": "uuid_2",
+                                "destination_uuid": "uuid_2",
                                 "data_type": "Authentication Token",
                                 "direction": "outgoing",
                             }
@@ -267,18 +270,18 @@ class AgentDataFlowReport(BaseModel):
                 ],
                 "trust_boundaries": [
                     {
-                        "id": "uuid_8",
+                        "uuid": "uuid_8",
                         "name": "User Boundary",
                         "description": "Separates the client-side interface.",
-                        "component_ids": [
+                        "component_uuids": [
                             "uuid_1",
                         ],
                     },
                     {
-                        "id": "uuid_5",
+                        "uuid": "uuid_5",
                         "name": "Application Boundary",
                         "description": "Separates the backend-side interface.",
-                        "component_ids": [
+                        "component_uuids": [
                             "uuid_2",
                             "uuid_3",
                         ],
@@ -294,11 +297,11 @@ class DataFlowReport(AgentDataFlowReport):
     This model adds unique identifiers and categorizes files based on their review status.
     """
 
-    id: UUID = Field(
+    uuid: UUID = Field(
         default_factory=uuid4, description="Unique identifier for the data flow report."
     )
-    repository_id: UUID = Field(
-        default_factory=uuid4, description="Unique identifier for the repository."
+    repository_uuid: UUID = Field(
+        ..., description="Unique identifier for the repository."
     )
     should_review: List[File] = Field(
         default_factory=list, description="Set of Files requiring review."
@@ -319,36 +322,25 @@ class DataFlowReport(AgentDataFlowReport):
         default="",
         description="A string representation of the diagram for visualization purposes.",
     )
+    threats: List[Threat] = Field(
+        default_factory=list, description="List of threats identified in the report."
+    )
+    attacks: List[Attack] = Field(
+        default_factory=list, description="List of attacks identified in the report."
+    )
 
     def __hash__(self):
-        return hash(self.id)
+        return hash(self.uuid)
 
     def __eq__(self, other):
-        return isinstance(other, DataFlowReport) and self.id == other.id
+        return isinstance(other, DataFlowReport) and self.uuid == other.uuid
 
     def model_dump(self, **kwargs):
         data = super().model_dump(**kwargs)
-        data["id"] = str(self.id)
-        data["repository_id"] = str(self.repository_id)
+        data["uuid"] = str(self.uuid)
+        data["repository_uuid"] = str(self.repository_uuid)
 
         return data
 
     class Config:
         from_attributes = True
-
-
-class Result(BaseModel):
-    dfd_component: str = Field(..., description="The DFD component being analyzed.")
-    attack_tactic: str = Field(
-        ..., description="The MITRE ATT&CK tactic relevant to this component."
-    )
-    technique_id_and_name: str = Field(
-        ..., description="The MITRE ATT&CK technique ID and name."
-    )
-    reason_for_relevance: str = Field(
-        ...,
-        description="Explanation of why this technique is relevant to the component.",
-    )
-    mitigation: Optional[str] = Field(
-        None, description="Optional suggested mitigation for this technique."
-    )

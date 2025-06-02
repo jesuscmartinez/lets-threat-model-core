@@ -2,12 +2,12 @@ from pathlib import Path
 from pydantic import SecretStr
 from core.agents.diagram_agent import DiagramAgent
 from core.agents.mitre_attack_agent import MitreAttackAgent
-from core.agents.repo_data_flow_agent import DataFlowAgent
+from core.agents.repo_data_flow_agent import DataFlowAgent, AgentDataFlowReport
 from core.agents.threat_model_agent import ThreatModelAgent
 from core.models.dtos.Asset import Asset
 from core.models.dtos.MitreAttack import AgentAttack, Attack
 from core.models.dtos.ThreatModel import ThreatModel
-from core.models.dtos.DataFlowReport import DataFlowReport, AgentDataFlowReport
+from core.models.dtos.DataFlowReport import DataFlowReport
 from core.models.dtos.Threat import Threat, AgentThreat
 from core.agents.threat_model_data_agent import ThreatModelDataAgent
 from core.models.dtos.Repository import Repository
@@ -31,43 +31,42 @@ async def generate_threat_model(
 ) -> ThreatModel:
 
     threat_model = ThreatModel(
-        id=uuid.uuid4(),
+        uuid=uuid.uuid4(),
         name="New Threat Model",
         summary="No summary generated.",
         asset=asset,
         repos=repos,
         data_flow_reports=[],
-        threats=[],
-        attacks=[],
     )
 
-    # Generate data flow reports concurrently
-    data_flow_reports = await asyncio.gather(
-        *(generate_data_flow(repo, config) for repo in repos)
-    )
-    threat_model.data_flow_reports = data_flow_reports
+    if config.generate_data_flow_reports:
+        # Generate data flow reports concurrently
+        data_flow_reports = await asyncio.gather(
+            *(generate_data_flow(repo, config) for repo in repos)
+        )
+        threat_model.data_flow_reports = data_flow_reports
 
     if not config.categorize_only:
 
-        # Generate miter att&ck concurrently
-        attack_lists = await asyncio.gather(
-            *(generate_mitre_attack(report, config) for report in data_flow_reports)
-        )
+        if config.generate_mitre_attacks:
 
-        # Flatten the list of threats
-        threat_model.attacks = [
-            attack for report_attacks in attack_lists for attack in report_attacks
-        ]
+            # Generate MITRE ATT&CK attacks concurrently
+            attack_results = await asyncio.gather(
+                *(generate_mitre_attack(report, config) for report in data_flow_reports)
+            )
+            for report, attacks in zip(data_flow_reports, attack_results):
+                report.attacks = attacks
 
-        # Generate threats concurrently
-        threat_lists = await asyncio.gather(
-            *(generate_threats(asset, report, config) for report in data_flow_reports)
-        )
-
-        # Flatten the list of threats
-        threat_model.threats = [
-            threat for report_threats in threat_lists for threat in report_threats
-        ]
+        if config.generate_threats:
+            # Generate threats concurrently
+            threat_results = await asyncio.gather(
+                *(
+                    generate_threats(asset, report, config)
+                    for report in data_flow_reports
+                )
+            )
+            for report, threats in zip(data_flow_reports, threat_results):
+                report.threats = threats
 
         threat_model_data = await generate_threat_model_data(threat_model, config)
         threat_model.name = threat_model_data["title"]
@@ -82,7 +81,7 @@ async def generate_data_flow(
     """Generates a DataFlowReport for a given repository (local or remote)."""
 
     logger.info(
-        f"🚀 Starting data flow generation for Repository: {repository.name} (ID: {repository.id})"
+        f"🚀 Starting data flow generation for Repository: {repository.name} (ID: {repository.uuid})"
     )
 
     try:
@@ -112,7 +111,7 @@ async def generate_mitre_attack(
 ) -> List[Attack]:
     """Generates a MITRE ATT&CK for a given data flow report."""
     logger.info(
-        f"🚀 Starting MITRE ATT&CK generation for Data Flow Report: {data_flow_report.id})"
+        f"🚀 Starting MITRE ATT&CK generation for Data Flow Report: {data_flow_report.uuid})"
     )
     try:
         mitre_attack_agent = MitreAttackAgent(
@@ -121,16 +120,17 @@ async def generate_mitre_attack(
             )
         )
 
-        seralized_report = AgentDataFlowReport(
+        serialized_report = DataFlowReport(
             overview=data_flow_report.overview,
             external_entities=data_flow_report.external_entities,
             processes=data_flow_report.processes,
             data_stores=data_flow_report.data_stores,
             trust_boundaries=data_flow_report.trust_boundaries,
+            repository_uuid=data_flow_report.repository_uuid,
         ).model_dump(mode="json")
 
         state = {
-            "data_flow_report": seralized_report,
+            "data_flow_report": serialized_report,
             "attacks": [],
         }
         end_state = await mitre_attack_agent.get_workflow().ainvoke(input=state)
@@ -141,8 +141,8 @@ async def generate_mitre_attack(
         return [
             Attack.model_validate(
                 {
-                    "id": uuid.uuid4(),
-                    "data_flow_report_id": data_flow_report.id,
+                    "uuid": uuid.uuid4(),
+                    "data_flow_report_uuid": data_flow_report.uuid,
                     **AgentAttack.model_validate(attack).model_dump(exclude_unset=True),
                 }
             )
@@ -294,8 +294,8 @@ def build_data_flow_report(
 
     report = DataFlowReport.model_validate(
         obj={
-            "id": uuid.uuid4(),
-            "repository_id": repository.id,
+            "uuid": uuid.uuid4(),
+            "repository_uuid": repository.uuid,
             **agent_data_flow.model_dump(exclude_unset=True),
             "could_not_review": list(end_state.get("could_not_review", [])),
             "could_review": list(end_state.get("could_review", [])),
@@ -314,7 +314,7 @@ async def generate_threats(
 ) -> List[Threat]:
     """Generates threats for a given data flow report."""
     logger.info(
-        f"🚀 Starting threats generation for Data Flow Report: {data_flow_report.id})"
+        f"🚀 Starting threats generation for Data Flow Report: {data_flow_report.uuid})"
     )
     try:
         threat_model_agent = ThreatModelAgent(
@@ -346,8 +346,8 @@ async def generate_threats(
         return [
             Threat.model_validate(
                 {
-                    "id": uuid.uuid4(),
-                    "data_flow_report_id": data_flow_report.id,
+                    "uuid": uuid.uuid4(),
+                    "data_flow_report_uuid": data_flow_report.uuid,
                     **AgentThreat.model_validate(threat).model_dump(exclude_unset=True),
                 }
             )
@@ -362,7 +362,7 @@ async def generate_threat_model_data(
     threat_model: ThreatModel, config: ThreatModelConfig
 ) -> dict:
     logger.info(
-        f"🚀 Starting threats model data generation for threat model: {threat_model.id})"
+        f"🚀 Starting threats model data generation for threat model: {threat_model.uuid})"
     )
     try:
         threat_model_data_agent = ThreatModelDataAgent(

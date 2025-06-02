@@ -41,8 +41,7 @@ You will receive the following inputs:
 1. **Asset**: Represents a specific resource or system entity.
 2. **List[Repository]**: One or more code repositories associated with the asset.
 3. **List[DataFlowReport]**: Detailed analyses of data flows within or related to the repositories.
-4. **List[Threat]**: Identified threats associated with the asset and its repositories.
-5. **Prior Summary** (optional): A previously generated summary of the threat model reports, if available.
+4. **Prior Summary** (optional): A previously generated summary of the threat model reports, if available.
 
 Your task is to analyze this information and perform the following steps:
 
@@ -55,7 +54,8 @@ Provide a comprehensive **summary** that:
 - Describes the role and significance of the **Asset** in the system.
 - Explains the purpose of the **Repositories** and their connection to the asset.
 - Discusses the relevance and key insights from the **DataFlowReports**, including how they illustrate the flow of data, the involved entities, processes, data stores, and trust boundaries.
-- Identifies and highlights the **Threats**, explaining their potential impact on the asset and the system's security posture.
+- Discusses the **Threats**, explaining their potential impact on the asset and the system's security posture.
+- Discusses the **Attacks**, detailing their tactics, techniques, and potential impact on the asset and system security posture.
 
 ### 3. Refine or Expand Previous Summary (if provided)
 If a **prior summary** is provided:
@@ -94,9 +94,6 @@ class ThreatModelDataAgent:
         ):
             raise ValueError("Data flow reports are missing in threat_model")
 
-        if "threats" not in threat_model or threat_model["threats"] is None:
-            raise ValueError("Threat data is missing in threat_model")
-
         # Convert asset
         numbered_asset = self.agent_helper.convert_uuids_to_ids(threat_model["asset"])
         threat_model["asset"] = numbered_asset
@@ -108,13 +105,6 @@ class ThreatModelDataAgent:
             for report in data_flow_reports
         ]
         threat_model["data_flow_reports"] = numbered_reports
-
-        # Convert threats
-        threats = threat_model["threats"]
-        numbered_threats = [
-            self.agent_helper.convert_uuids_to_ids(threat) for threat in threats
-        ]
-        threat_model["threats"] = numbered_threats
 
         # Update state
         state.threat_model = threat_model
@@ -150,7 +140,6 @@ class ThreatModelDataAgent:
             "Previous Summary:\n{previous_summary}\n\n"
             "Asset:\n{asset}\n\n"
             "DataFlowReport:\n{data_flow_report}\n\n"
-            "Threats:\n{threats}\n"
         )
         prompt = ChatPromptTemplate.from_messages([system_prompt, user_prompt])
 
@@ -163,7 +152,6 @@ class ThreatModelDataAgent:
         threat_model = state.threat_model
         asset = threat_model.get("asset", {})
         reports = threat_model.get("data_flow_reports", [])
-        threats = threat_model.get("threats", [])
 
         # Start with an empty summary
         previous_summary = "No previous summary available."
@@ -172,16 +160,26 @@ class ThreatModelDataAgent:
         for idx, report in enumerate(reports):
             logger.info(f"📄 Generating summary for report {idx + 1}/{len(reports)}...")
 
-            overview = report.get("overview", "No overview available.")
+            # Truncate the DataFlowReport to only include overview and most critical/sensitive threats and attacks
+            overview = {
+                "overview": report.get("overview", ""),
+                "threats": sorted(
+                    report.get("threats", []),
+                    key=lambda t: (t.get("impact_level", ""), t.get("risk_rating", "")),
+                    reverse=True,
+                ),
+                "attacks": sorted(
+                    report.get("attacks", []),
+                    key=lambda a: (a.get("tactic", ""), a.get("technique_id", "")),
+                    reverse=True,
+                ),
+            }
 
             # Prepare inputs for this iteration
             chain_inputs = {
                 "previous_summary": previous_summary,
                 "asset": json.dumps(asset, sort_keys=True),
-                "data_flow_report": json.dumps(
-                    overview, sort_keys=True
-                ),  # Singular report
-                "threats": json.dumps(threats, sort_keys=True),
+                "data_flow_report": json.dumps(overview, sort_keys=True),
             }
 
             # Invoke the chain with retry logic

@@ -1,5 +1,7 @@
 import json
+from typing import List
 import attr
+from h11 import Data
 from sarif_om import (
     SarifLog,
     Tool,
@@ -16,47 +18,24 @@ from sarif_om import (
     Region,
     Location,
 )
+from itertools import chain
+from core.models.dtos.DataFlowReport import DataFlowReport
 from core.models.dtos.ThreatModel import ThreatModel
 from core.models.enums import StrideCategory
 
 
-def generate_sarif_log_with_om(threat_model: ThreatModel) -> SarifLog:
+def get_threat_results(data_flow: DataFlowReport) -> List[Result]:
+    """
+    Extracts threats from a DataFlowReport.
 
-    # Create rules
-    rules = []
-    for category in StrideCategory:
-        rule = ReportingDescriptor(
-            id=f"STRIDE-{category.name}",
-            name=category.value,
-            short_description=MultiformatMessageString(text=category.name),
-            full_description=MultiformatMessageString(text=category.description),
-            help_uri=category.external_resource,
-        )
-        rules.append(rule)
+    Args:
+        data_flow (DataFlowReport): The data flow report containing threats.
 
-    # Create tool
-    tool = Tool(
-        driver=ToolComponent(
-            name="Lets Threat Model",
-            information_uri="https://github.com/jesuscmartinez/lets-threat-model-core",
-            rules=rules,
-        )
-    )
-
-    # Create artifacts
-    artifact_uri = (
-        f"asset-{threat_model.asset.name.lower().replace(' ', '_')}.threat-model"
-    )
-    artifact = Artifact(
-        location=ArtifactLocation(uri=artifact_uri, uri_base_id="%SRCROOT%"),
-        contents=ArtifactContent(text=json.dumps(threat_model.model_dump(mode="json"))),
-        mime_type="application/json",
-        encoding="utf-8",
-    )
-
-    # Create results
+    Returns:
+        List[Result]: A list of threats extracted from the data flow report.
+    """
     results = []
-    for threat in threat_model.threats:
+    for threat in data_flow.threats:
         rule_id = f"STRIDE-{threat.stride_category.name}"
         mitigations_text = "\n".join(f"- {m}" for m in threat.mitigations)
         description = (
@@ -85,14 +64,14 @@ def generate_sarif_log_with_om(threat_model: ThreatModel) -> SarifLog:
             message=Message(text=description),
             locations=locations,
             properties={
-                "id": str(threat.id),
-                "data_flow_report_id": str(threat.data_flow_report_id),
+                "id": str(threat.uuid),
+                "data_flow_report_id": str(threat.data_flow_report_uuid),
                 "security-severity": str(threat.impact_level.score),
                 "name": threat.name,
                 "description": threat.description,
                 "stride_category": threat.stride_category.name,
                 "component_names": threat.component_names,
-                "component_ids": [str(cid) for cid in threat.component_ids],
+                "component_ids": [str(cid) for cid in threat.component_uuids],
                 "attack_vector": threat.attack_vector,
                 "impact_level": threat.impact_level.value,
                 "risk_rating": threat.risk_rating.value,
@@ -100,6 +79,132 @@ def generate_sarif_log_with_om(threat_model: ThreatModel) -> SarifLog:
             },
         )
         results.append(result)
+
+    return results
+
+
+def get_attack_results(data_flow: DataFlowReport) -> List[Result]:
+    """
+    Extracts attack patterns from a DataFlowReport.
+
+    Args:
+        data_flow (DataFlowReport): The data flow report containing attack patterns.
+
+    Returns:
+        List[Result]: A list of attack patterns extracted from the data flow report.
+    """
+    results = []
+    for attack in data_flow.attacks:
+        technique = f"{attack.technique_id}: {attack.technique_name}"
+        description = (
+            f"## Component:\n{attack.component}\n"
+            f"## Tactic:\n{attack.attack_tactic}\n"
+            f"## Technique:\n{technique}\n"
+            f"## Relevance:\n{attack.reason_for_relevance or 'N/A'}\n"
+            f"## Mitigation:\n{attack.mitigation}\n"
+            f"## Reference:\n{attack.url or 'N/A'}"
+        )
+
+        locations = [
+            Location(
+                physical_location=PhysicalLocation(
+                    artifact_location=ArtifactLocation(
+                        uri=attack.component,
+                        uri_base_id="%SRCROOT%",
+                    ),
+                    region=Region(start_line=1, start_column=1),
+                )
+            )
+        ]
+
+        result = Result(
+            rule_id="MITRE",
+            level="warning",
+            kind="review",
+            message=Message(text=description),
+            locations=locations,
+            properties={
+                "id": str(attack.uuid),
+                "component_id": str(attack.component_uuid),
+                "tactic": attack.attack_tactic,
+                "technique_id": attack.technique_id,
+                "technique_name": attack.technique_name,
+                "reason_for_relevance": attack.reason_for_relevance,
+                "mitigation": attack.mitigation,
+                "url": attack.url,
+                "is_subtechnique": attack.is_subtechnique,
+                "parent_id": attack.parent_id,
+                "parent_name": attack.parent_name,
+            },
+        )
+        results.append(result)
+
+    return results
+
+
+def generate_sarif_log_with_om(threat_model: ThreatModel) -> SarifLog:
+
+    # Create rules
+    rules = []
+    for category in StrideCategory:
+        rule = ReportingDescriptor(
+            id=f"STRIDE-{category.name}",
+            name=category.value,
+            short_description=MultiformatMessageString(text=category.name),
+            full_description=MultiformatMessageString(text=category.description),
+            help_uri=category.external_resource,
+        )
+        rules.append(rule)
+
+    # Add MITRE ATT&CK rule descriptor
+    mitre_rule = ReportingDescriptor(
+        id="MITRE",
+        name="MITRE ATT&CK",
+        short_description=MultiformatMessageString(text="MITRE ATT&CK technique"),
+        full_description=MultiformatMessageString(
+            text="This issue relates to a technique from the MITRE ATT&CK framework."
+        ),
+        help_uri="https://attack.mitre.org/",
+    )
+    rules.append(mitre_rule)
+
+    # Create tool
+    tool = Tool(
+        driver=ToolComponent(
+            name="Lets Threat Model",
+            information_uri="https://github.com/jesuscmartinez/lets-threat-model-core",
+            rules=rules,
+        )
+    )
+
+    # Create artifacts
+    artifact_uri = (
+        f"asset-{threat_model.asset.name.lower().replace(' ', '_')}.threat-model"
+    )
+    artifact = Artifact(
+        location=ArtifactLocation(uri=artifact_uri, uri_base_id="%SRCROOT%"),
+        contents=ArtifactContent(text=json.dumps(threat_model.model_dump(mode="json"))),
+        mime_type="application/json",
+        encoding="utf-8",
+    )
+
+    # Create results
+    results = []
+    # Flatten and add threat results
+    results.extend(
+        chain.from_iterable(
+            get_threat_results(data_flow)
+            for data_flow in threat_model.data_flow_reports
+        )
+    )
+
+    # Flatten and add attack results
+    results.extend(
+        chain.from_iterable(
+            get_attack_results(data_flow)
+            for data_flow in threat_model.data_flow_reports
+        )
+    )
 
     # Create run
     run = Run(tool=tool, results=results, artifacts=[artifact])

@@ -14,17 +14,17 @@ def agent_helper():
 def input_data():
     """Fixture for test input data."""
     return {
-        "id": "71c640e4-6d34-460c-ad31-53e34102f0c5",
+        "uuid": "71c640e4-6d34-460c-ad31-53e34102f0c5",
         "nested": {
-            "id": "df0190c9-5481-4109-89ea-9cb0f93dfea0",
+            "uuid": "df0190c9-5481-4109-89ea-9cb0f93dfea0",
             "items": [
-                {"id": "b8cdd8d5-a2b1-40c4-bbfc-72c8430d98ed"},
-                {"id": "da571bf2-1c16-4db2-9cf2-8d6993e87af4"},
+                {"uuid": "b8cdd8d5-a2b1-40c4-bbfc-72c8430d98ed"},
+                {"uuid": "da571bf2-1c16-4db2-9cf2-8d6993e87af4"},
             ],
         },
         "references": {
-            "_id": "71c640e4-6d34-460c-ad31-53e34102f0c5",
-            "_ids": [
+            "_uuid": "71c640e4-6d34-460c-ad31-53e34102f0c5",
+            "_uuids": [
                 "b8cdd8d5-a2b1-40c4-bbfc-72c8430d98ed",
                 "da571bf2-1c16-4db2-9cf2-8d6993e87af4",
             ],
@@ -36,17 +36,17 @@ def input_data():
 def expected_output():
     """Fixture for expected output after UUID conversion."""
     return {
-        "id": "uuid_1",
+        "uuid": "uuid_1",
         "nested": {
-            "id": "uuid_2",
+            "uuid": "uuid_2",
             "items": [
-                {"id": "uuid_3"},
-                {"id": "uuid_4"},
+                {"uuid": "uuid_3"},
+                {"uuid": "uuid_4"},
             ],
         },
         "references": {
-            "_id": "uuid_1",
-            "_ids": [
+            "_uuid": "uuid_1",
+            "_uuids": [
                 "uuid_3",
                 "uuid_4",
             ],

@@ -57,7 +57,7 @@ def load_yaml_config(file_path: str) -> dict:
 def parse_asset(data: dict) -> Asset:
     """Parses asset information from YAML data."""
     return Asset(
-        id=uuid4(),
+        uuid=uuid4(),
         name=data.get("name", "Unnamed Asset"),
         description=data.get("description", "No description provided"),
         internet_facing=data.get("internet_facing", False),
@@ -84,12 +84,12 @@ def parse_repositories(data: list, asset_id: UUID) -> list[Repository]:
 
         repositories.append(
             Repository(
-                id=uuid4(),
+                uuid=uuid4(),
                 name=repo.get("name", "Unnamed Repository"),
                 description=repo.get("description"),
                 url=url,
                 local_path=local_path,
-                asset_id=asset_id,
+                asset_uuid=asset_id,
             )
         )
 
@@ -122,6 +122,11 @@ def build_threat_model_config(
         "completion_threshold": config_data.get("completion_threshold", 0.8),
         "username": GITHUB_USERNAME,
         "pat": GITHUB_PAT,
+        "generate_mitre_attacks": config_data.get("generate_mitre_attacks", True),
+        "generate_threats": config_data.get("generate_threats", True),
+        "generate_data_flow_reports": config_data.get(
+            "generate_data_flow_reports", True
+        ),
     }
 
     # Remove None values
@@ -142,7 +147,7 @@ async def main(
     try:
         config = load_yaml_config(yaml_file)
         asset = parse_asset(config.get("asset", {}))
-        repositories = parse_repositories(config.get("repositories", []), asset.id)
+        repositories = parse_repositories(config.get("repositories", []), asset.uuid)
         threat_model_config = build_threat_model_config(
             config.get("config", {}), config.get("exclude_patterns", [])
         )

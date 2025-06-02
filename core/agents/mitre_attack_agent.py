@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import json
-from re import A
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.prompts import (
     SystemMessagePromptTemplate,
@@ -12,9 +11,10 @@ from core.agents.agent_tools import AgentHelper, ainvoke_with_retry, invoke_with
 from core.models.dtos.DataFlowReport import DataFlowReport
 from langgraph.graph import StateGraph, START, END
 from pydantic import BaseModel, Field
-from typing import Optional, Any, Dict, List
+from typing import Optional, Any, Dict, List, cast
 
 from core.models.dtos.MitreAttack import AgentAttack, Attack
+from langchain_core.runnables import Runnable
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +27,20 @@ Your task is to:
 1. Analyze the provided **component** in the context of the full system.
 2. Identify the relevant MITRE ATT&CK **tactics** and **techniques** that an adversary could use to compromise this component, move laterally, or exfiltrate data.
 3. For each identified technique, include:
-   - The **ATT&CK tactic** (e.g., Initial Access, Execution),
-   - The **ATT&CK technique ID and name** (e.g., T1078: Valid Accounts),
-   - A brief **explanation of why this technique is relevant** to this component.
-   - Optionally, suggest **mitigations** based on ATT&CK recommendations.
+   - The **component** name this technique targets,
+   - The **component_uuid** (UUID) for that component,
+   - The **attack_tactic** (e.g., Initial Access, Execution),
+   - The **technique_id** and **technique_name** (e.g., T1078 · Valid Accounts),
+   - The **url** of the ATT&CK page for the technique or sub‑technique you are citing,
+   - A concise **reason_for_relevance** explaining why the technique applies,
+   - List one or more concrete **mitigation** recommendations,
+   - The flag **is_subtechnique** (`true` or `false`);
+     if `true`, also provide **parent_id** and **parent_name**.
 
-Focus solely on the current component provided in context, but leverage insights from the full system report as needed.
+If a technique is a *sub‑technique*, mention the parent technique first and indent the sub‑technique beneath it (e.g., “T1059: Command & Scripting Interpreter” → “  • T1059.003 Windows Command Shell”).
+
+Focus solely on the current component provided in context, but leverage insights from the full system report as needed and use `https://attack.mitre.org/techniques/enterprise/` get the latest information on tactics and techniques.
+Do not provide generic advice or high-level summaries; focus on specific techniques that could be applied to the component based on the system architecture.
 """
 
 
@@ -42,13 +50,15 @@ class AttackGraphStateModel(BaseModel):
 
 
 class Result(BaseModel):
-    attacks: list[AgentAttack] = Field(
+    attacks: List[AgentAttack] = Field(
         default_factory=list,
         description="List of identified attacks based on the MITRE ATT&CK framework.",
     )
 
 
 class MitreAttackAgent:
+    """Agent to analyze system components and identify MITRE ATT&CK techniques."""
+
     def __init__(self, model: BaseChatModel):
         self.model = model
         self.agent_helper = AgentHelper()
@@ -68,7 +78,7 @@ class MitreAttackAgent:
         logger.info("Cleaning up threat modeling state...")
 
         state.attacks = [
-            self.agent_helper.convert_ids_to_uuids(threat) for threat in state.attacks
+            self.agent_helper.convert_ids_to_uuids(attack) for attack in state.attacks
         ]
 
         return state
@@ -160,8 +170,22 @@ class MitreAttackAgent:
         )
         prompt = ChatPromptTemplate.from_messages([system_prompt, user_prompt])
 
-        # Build chain with structured output
-        chain = prompt | self.model.with_structured_output(schema=Result)
+        logger.debug(
+            "🗂️ Preparing analysis for %d components",
+            sum(
+                len(report.get(k, []))
+                for k in (
+                    "external_entities",
+                    "processes",
+                    "data_stores",
+                    "trust_boundaries",
+                    "data_flows",
+                )
+            ),
+        )
+        structured_model = self.model.with_structured_output(schema=Result)
+        chain = prompt | structured_model
+        logger.debug("🛠️ Tool-bound chain ready; starting component analysis")
 
         tasks = [
             self._process_component(component, report, chain)
