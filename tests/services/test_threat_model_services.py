@@ -49,6 +49,15 @@ def dummy_report(dummy_repo):
     )
 
 
+# Automatically mock generate_dataflow_diagram to return a static diagram string
+@pytest.fixture(autouse=True)
+def mock_mermaid(monkeypatch):
+    monkeypatch.setattr(
+        "core.services.threat_model_services.generate_dataflow_diagram",
+        lambda *args, **kwargs: "graph TD; A-->B",
+    )
+
+
 @pytest.mark.asyncio
 async def test_generate_data_flow_monkeypatched_process(dummy_config, dummy_repo):
     # stub the local/remote processing functions
