@@ -21,7 +21,7 @@ from langchain_core.output_parsers import JsonOutputParser
 from core.models.dtos.Threat import AgentThreat
 from core.agents.agent_tools import (
     AgentHelper,
-    async_invoke_with_retry,
+    ainvoke_with_retry,
     invoke_with_retry,
 )
 from langgraph.graph import StateGraph, START, END
@@ -258,7 +258,7 @@ class ThreatModelAgent:
                 component_data.get("name", "Unknown Component"),
             )
 
-            result = await async_invoke_with_retry(
+            result = await ainvoke_with_retry(
                 chain,
                 {
                     "asset": json.dumps(asset, sort_keys=True),

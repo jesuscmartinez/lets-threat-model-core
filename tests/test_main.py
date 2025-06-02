@@ -1,3 +1,5 @@
+from ast import Str
+from re import L, S
 import unittest
 import tempfile
 
@@ -6,9 +8,15 @@ from pathlib import Path
 from uuid import uuid4, UUID
 from unittest.mock import patch, AsyncMock, MagicMock
 
+
 # Import functions and models from your project.
+from core.models.enums import Level, StrideCategory
 import main
 from main import parse_asset, ThreatModel
+from core.models.dtos.DataFlowReport import DataFlowReport
+from core.models.dtos.Repository import Repository
+from core.models.dtos.Threat import Threat
+from core.models.dtos.MitreAttack import Attack
 
 # ----------------------------------------
 # Fixtures for testing
@@ -82,14 +90,62 @@ class TestThreatModelGeneration(unittest.IsolatedAsyncioTestCase):
             }
         )
 
+        dummy_repo = Repository(
+            uuid=uuid4(),
+            name="Repo",
+            description="desc",
+            url="https://repo.com",
+            asset_uuid=dummy_asset.uuid,
+        )
+        dummy_data_flow_report = DataFlowReport(
+            uuid=uuid4(),
+            repository_uuid=dummy_repo.uuid,
+            external_entities=[],
+            processes=[],
+            data_stores=[],
+            trust_boundaries=[],
+            should_review=[],
+            reviewed=[],
+            could_review=[],
+            should_not_review=[],
+            could_not_review=[],
+            diagram="graph TD",
+        )
+        dummy_threat = Threat(
+            uuid=uuid4(),
+            data_flow_report_uuid=dummy_data_flow_report.uuid,
+            name="Dummy Threat",
+            description="Threat desc",
+            stride_category=StrideCategory.REPUDIATION,
+            component_names=["Comp"],
+            component_uuids=[uuid4()],
+            attack_vector="Network",
+            impact_level=Level.HIGH,
+            risk_rating=Level.MEDIUM,
+            mitigations=["Mitigation A"],
+        )
+        dummy_attack = Attack(
+            uuid=uuid4(),
+            component_uuid=uuid4(),
+            component="Dummy Component",
+            url="https://example.com/component",
+            parent_id="T1059",
+            parent_name="Dummy Parent",
+            attack_tactic="Execution",
+            technique_id="T1059",
+            technique_name="Command and Scripting Interpreter",
+            reason_for_relevance="This technique allows attackers to execute commands on the system.",
+            mitigation="Use application whitelisting to block unknown scripts.",
+        )
         dummy_threat_model = ThreatModel(
-            id=uuid4(),
+            uuid=uuid4(),
             name="Dummy Threat Model",
             summary="Dummy summary",
             asset=dummy_asset,
-            repos=[],  # For this test, the repos list can be empty.
-            data_flow_reports=[],
-            threats=[],
+            repos=[dummy_repo],
+            data_flow_reports=[dummy_data_flow_report],
+            threats=[dummy_threat],
+            attacks=[dummy_attack],
         )
         mock_generate_threat_model.return_value = dummy_threat_model
 

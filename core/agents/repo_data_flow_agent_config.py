@@ -8,15 +8,19 @@ class RepoDataFlowAgentConfig(BaseModel):
     Uses Pydantic for validation, default values, and serialization.
     """
 
-    context_window: int = Field(128000, description="Maximum context window size")
-    max_output_tokens: int = Field(16384, description="Maximum number of output tokens")
+    context_window: int = Field(
+        default=128000, description="Maximum context window size"
+    )
+    max_output_tokens: int = Field(
+        default=16384, description="Maximum number of output tokens"
+    )
 
     # Review settings
     review_max_file_in_batch: int = Field(
-        3, description="Max files per batch in review"
+        default=3, description="Max files per batch in review"
     )
     review_token_buffer: float = Field(
-        0.5, description="Buffer percentage for review tokens"
+        default=0.5, description="Buffer percentage for review tokens"
     )
 
     # File patterns
@@ -59,18 +63,18 @@ class RepoDataFlowAgentConfig(BaseModel):
 
     # Categorization settings
     categorize_max_file_in_batch: int = Field(
-        30, description="Max files per batch for categorization"
+        default=30, description="Max files per batch for categorization"
     )
     categorize_token_buffer: float = Field(
-        0.5, description="Buffer percentage for categorization tokens"
+        default=0.5, description="Buffer percentage for categorization tokens"
     )
     categorize_only: bool = Field(
-        False, description="If True, only categorization is performed"
+        default=False, description="If True, only categorization is performed"
     )
 
     # Completion threshold
     completion_threshold: float = Field(
-        0.8, description="Threshold to determine review completion"
+        default=0.8, description="Threshold to determine review completion"
     )
 
     def add_exclude_patterns(self, patterns: List[str]):

@@ -20,6 +20,18 @@ from uuid import uuid4
 from core.models.dtos.Threat import Threat
 
 
+def process_files(title, files) -> str:
+    if not files:
+        return f"## {title}\nNo files flagged for {title}.\n\n"
+
+    files_str = f"## {title}\n"
+    files_str += "\n".join(
+        f"- **{file.file_path}**: {file.justification}" for file in files
+    )
+    files_str += "\n\n"
+    return files_str
+
+
 def generate_threat_model_report(
     threat_model_config: ThreatModelConfig, threat_model: ThreatModel
 ) -> str:
@@ -50,7 +62,12 @@ def generate_threat_model_report(
     # Data Flow Reports
     report += "## Data Flow Reports\n"
     for i, report_data in enumerate(threat_model.data_flow_reports, 1):
-        report += f"### Report {i}\n"
+
+        repo = next(
+            (r for r in threat_model.repos if r.uuid == report_data.repository_uuid),
+            None,
+        )
+        report += f"### Report {repo.name}\n"
         report += f"**Overview:** {report_data.overview}\n\n"
 
         report += f"### Diagram {i}\n```mermaid\n{report_data.diagram}\n```\n\n"
@@ -83,96 +100,74 @@ def generate_threat_model_report(
                 report += f"- **{boundary.name}**: {boundary.description}\n"
             report += "\n"
 
-    # Threat Table (Summary)
-    report += "## Threat Table\n"
-    if threat_model.threats:
-        report += "| Threat | STRIDE Category | Attack Vector | Impact Level | Risk Rating | Affected Components |\n"
-        report += "|---|---|---|---|---|---|\n"
-        for threat in sorted(threat_model.threats, key=lambda t: t.name):
-            components_str = ", ".join(threat.component_names)
-            report += (
-                f"| {threat.name} "
-                f"| {threat.stride_category.name} "
-                f"| {threat.attack_vector} "
-                f"| {threat.impact_level.name} "
-                f"| {threat.risk_rating.name} "
-                f"| {components_str} |\n"
-            )
-        report += "\n"
-    else:
-        report += "No threats identified.\n\n"
+        sorted_threats = sorted(report_data.threats, key=lambda t: t.name)
 
-    # Threats Section
-    report += "## Threats Identified\n"
-    if threat_model.threats:
-        for threat in sorted(threat_model.threats, key=lambda t: t.name):
-            report += f"### {threat.name}\n"
-            report += f"**Description:** {threat.description}\n"
-            report += f"**STRIDE Category:** {threat.stride_category.name}\n"
-            report += f"**Affected Components:** {', '.join(threat.component_names)}\n"
-            report += f"**Attack Vector:** {threat.attack_vector}\n"
-            report += f"**Impact Level:** {threat.impact_level.name}\n"
-            report += f"**Risk Rating:** {threat.risk_rating.name}\n"
-            report += "**Mitigations:**\n"
-            for mitigation in threat.mitigations:
-                report += f"- {mitigation}\n"
-            report += "\n"
-    else:
-        report += "No threats identified.\n\n"
+        # Threats Section
+        report += "### Threats Identified\n"
+        if report_data.threats:
+            for threat in sorted_threats:
+                report += f"### ⚠️ {threat.name}\n\n"
+                report += "| Field | Value |\n"
+                report += "|-------|-------|\n"
+                report += f"| **ID** | {threat.uuid} |\n"
+                report += f"| **Category** | {threat.stride_category.name} |\n"
+                report += f"| **Impact Level** | {threat.impact_level.name} |\n"
+                report += f"| **Risk Rating** | {threat.risk_rating.name} |\n"
+                report += f"| **Affected Components** | {', '.join(threat.component_names)} |\n\n"
+                report += f"**📝 Description:**\n{threat.description}\n\n"
+                report += f"**🎯 Attack Vector:**\n{threat.attack_vector}\n\n"
+                report += "**🛡️ Mitigations:**\n"
+                for mitigation in threat.mitigations:
+                    report += f"- {mitigation}\n"
+                report += "\n"
+        else:
+            report += "No threats identified.\n\n"
 
-    def process_files(title, files):
-        if not files:
-            return f"## {title}\nNo files flagged for {title}.\n\n"
+        # Sort attacks by technique_name for consistent reporting
+        sorted_attacks = sorted(report_data.attacks, key=lambda a: a.technique_name)
 
-        files_str = f"## {title}\n"
-        files_str += "\n".join(
-            f"- **{file.file_path}**: {file.justification}" for file in files
-        )
-        files_str += "\n\n"
-        return files_str
+        # ATT&CK Section
+        report += "### MITRE ATT&CKs Identified\n"
+        if report_data.attacks:
+            for attack in sorted_attacks:
+                report += f"### 🔐 {attack.technique_name}\n\n"
+                report += "| Field | Value |\n"
+                report += "|-------|-------|\n"
+                report += f"| **ID** | {attack.uuid} |\n"
+                report += f"| **Tactic** | {attack.attack_tactic} |\n"
+                report += f"| **Technique ID & Name** | {attack.technique_id} – {attack.technique_name} |\n"
+                report += f"| **URL** | {attack.url or 'N/A'} |\n"
+                report += f"| **Component** | {attack.component or 'N/A'} |\n"
+                report += f"| **Component ID** | {attack.component_uuid} |\n"
+                report += f"| **Is Sub‑technique?** | {attack.is_subtechnique} |\n"
+                if attack.is_subtechnique:
+                    report += f"| **Parent Technique** | {attack.parent_id} – {attack.parent_name} |\n"
+                report += "\n"
+                report += (
+                    f"**📝 Reason for Relevance:**\n{attack.reason_for_relevance}\n\n"
+                )
+                report += f"**🛡️ Mitigations:**\n- {attack.mitigation or 'N/A'}\n\n"
+        else:
+            report += "No ATT&CKs identified.\n\n"
 
-    if threat_model.data_flow_reports:
-        reviewed_files = [
-            file
-            for report in threat_model.data_flow_reports
-            for file in report.reviewed
-        ]
-        should_files = [
-            file
-            for report in threat_model.data_flow_reports
-            for file in report.should_review
-        ]
-        should_not_files = [
-            file
-            for report in threat_model.data_flow_reports
-            for file in report.should_not_review
-        ]
-        could_files = [
-            file
-            for report in threat_model.data_flow_reports
-            for file in report.could_review
-        ]
-        could_not_files = [
-            file
-            for report in threat_model.data_flow_reports
-            for file in report.could_not_review
-        ]
-
-        report += f"# Files:\n"
+        report += f"### Files:\n"
         report += process_files(
-            "Reviewed", sorted(reviewed_files, key=lambda f: f.file_path)
+            "Reviewed", sorted(report_data.reviewed, key=lambda f: f.file_path)
         )
         report += process_files(
-            "Should Review", sorted(should_files, key=lambda f: f.file_path)
+            "Should Review",
+            sorted(report_data.should_review, key=lambda f: f.file_path),
         )
         report += process_files(
-            "Should Not Review", sorted(should_not_files, key=lambda f: f.file_path)
+            "Should Not Review",
+            sorted(report_data.should_not_review, key=lambda f: f.file_path),
         )
         report += process_files(
-            "Could Review", sorted(could_files, key=lambda f: f.file_path)
+            "Could Review", sorted(report_data.could_review, key=lambda f: f.file_path)
         )
         report += process_files(
-            "Could Not Review", sorted(could_not_files, key=lambda f: f.file_path)
+            "Could Not Review",
+            sorted(report_data.could_not_review, key=lambda f: f.file_path),
         )
 
     return report

@@ -49,14 +49,14 @@ def test_initialize_valid_data(mock_agent, valid_state):
     """Test successful initialization with valid data."""
     # Patch the conversion function so that it replaces a given uuid with a placeholder.
     mock_agent.agent_helper.convert_uuids_to_ids = MagicMock(
-        side_effect=lambda x: {"uuid_X": x["uuid"]}
+        side_effect=lambda x: {"uuid": x["uuid"]}
     )
 
     new_state = mock_agent.initialize(valid_state)
 
-    assert new_state.threat_model["asset"] == {"uuid_X": "1234"}
-    assert new_state.threat_model["data_flow_reports"] == [{"uuid_X": "91011"}]
-    assert new_state.threat_model["threats"] == [{"uuid_X": "1213"}]
+    assert new_state.threat_model["asset"] == {"uuid": "1234"}
+    assert new_state.threat_model["data_flow_reports"] == [{"uuid": "91011"}]
+    assert new_state.threat_model["threats"] == [{"uuid": "1213"}]
 
 
 # -----------------------------------------------------------------------------

@@ -1,7 +1,10 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from uuid import UUID
 from typing import List, Optional, Dict, Any
+
+from regex import F
 from core.models.dtos.DataFlowReport import DataFlowReport
+from core.models.dtos.MitreAttack import Attack
 from core.models.dtos.Threat import Threat
 from core.models.dtos.Asset import Asset
 from core.models.dtos.Repository import Repository
@@ -21,7 +24,6 @@ class CreateThreatModel(BaseModel):
     asset: Asset
     repos: List[Repository]
     data_flow_reports: List[DataFlowReport]
-    threats: List[Threat]
 
 
 # Output schema for returning data
@@ -33,7 +35,10 @@ class ThreatModel(CreateThreatModel):
     ensuring each generated threat model has a referenceable UUID.
     """
 
-    id: UUID
+    uuid: UUID = Field(
+        default_factory=UUID,
+        description="Unique identifier for the threat model.",
+    )
 
     class Config:
         from_attributes = True
