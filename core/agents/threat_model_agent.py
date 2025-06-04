@@ -102,9 +102,6 @@ Guidelines for Analysis:
         • Security Controls & Enforcement
             • Identify existing protective measures at each boundary (firewalls, proxies, gateways, etc.) and gauge effectiveness against DoS or EoP attacks.
             • Suggest additional or improved controls where weaknesses are found.
-
-Format Instructions:
-{format_instructions}
 """
 
 SYSTEM_PROMPT_CONSOLIDATE = """\
@@ -131,9 +128,6 @@ Instructions:
     • Attack Vectors: Merge attack techniques into a single detailed vector covering all variations.
     • Impact Level & Risk Rating: Select the highest level from the merged threats.
     • Mitigations: Aggregate all mitigation steps into a single actionable list.
-
-Format Instructions:
-{format_instructions}
 """
 
 
@@ -200,7 +194,19 @@ class ThreatModelAgent:
         )
 
         user_prompt = HumanMessagePromptTemplate.from_template(
-            "Component:\n{component}\n\nAsset:\n{asset}\nAgentDataFlowReport:\n{data_flow_report}"
+            """\
+            <component>
+            {component}
+            </component>
+
+            <asset>
+            {asset}
+            </asset>
+            
+            <data_flow_report>
+            {data_flow_report}
+            </data_flow_report>
+            """
         )
 
         prompt = ChatPromptTemplate.from_messages([system_prompt, user_prompt])
@@ -305,7 +311,9 @@ class ThreatModelAgent:
             SYSTEM_PROMPT_CONSOLIDATE,
             partial_variables={"format_instructions": parser.get_format_instructions()},
         )
-        user_prompt = HumanMessagePromptTemplate.from_template("Threats:\n{threats}")
+        user_prompt = HumanMessagePromptTemplate.from_template(
+            "<threats>\n{threats}\n</threats>"
+        )
         prompt = ChatPromptTemplate.from_messages([system_prompt, user_prompt])
 
         chain = prompt | self.model.with_structured_output(

@@ -58,7 +58,7 @@ class DiagramAgent:
             SYSTEM_GENERATE_PROMPT
         )
         user_prompt = HumanMessagePromptTemplate.from_template(
-            "DataFlowReport:\n{data_flow_report}\n\n"
+            "<data_flow_report>\n{data_flow_report}\n</data_flow_report>"
         )
         prompt = ChatPromptTemplate.from_messages([system_prompt, user_prompt])
 

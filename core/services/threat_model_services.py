@@ -1,6 +1,7 @@
 from pathlib import Path
 from pydantic import SecretStr
 from core.agents.diagram_agent import DiagramAgent
+from core.agents.merge_data_flows_agent import MergeDataFlowAgent
 from core.agents.mitre_attack_agent import MitreAttackAgent
 from core.agents.repo_data_flow_agent import DataFlowAgent, AgentDataFlowReport
 from core.agents.threat_model_agent import ThreatModelAgent
@@ -41,12 +42,25 @@ async def generate_threat_model(
 
     if config.generate_data_flow_reports:
         # Generate data flow reports concurrently
-        data_flow_reports = await asyncio.gather(
-            *(generate_data_flow(repo, config) for repo in repos)
+        individual_reports = await asyncio.gather(
+            *(generate_data_flow(repo, config) for repo in repos),
+            return_exceptions=False,
         )
-        threat_model.data_flow_reports = data_flow_reports
 
-    if not config.categorize_only:
+        strategy = config.data_flow_report_strategy
+
+        if strategy == ThreatModelConfig.STRATEGY_PER_REPOSITORY:
+            threat_model.data_flow_reports = individual_reports
+        elif strategy == ThreatModelConfig.STRATEGY_COMBINED:
+            combined_report = await merge_data_flows(individual_reports, config)
+            threat_model.data_flow_reports = [combined_report]
+        elif strategy == ThreatModelConfig.STRATEGY_BOTH:
+            combined_report = await merge_data_flows(individual_reports, config)
+            threat_model.data_flow_reports = [combined_report, *individual_reports]
+
+        data_flow_reports = threat_model.data_flow_reports
+
+    if not config.categorize_only and threat_model.data_flow_reports:
 
         if config.generate_mitre_attacks:
 
@@ -387,4 +401,77 @@ async def generate_threat_model_data(
 
     except Exception as e:
         logger.exception(f"❌ Error during threat generation: {str(e)}")
+        raise
+
+
+async def merge_data_flows(
+    data_flow_reports: List[DataFlowReport], config: ThreatModelConfig
+) -> DataFlowReport:
+    logger.info(f"🚀 Starting data flow merger for {len(data_flow_reports)} reports.")
+    try:
+        merge_agent = MergeDataFlowAgent(
+            model=ChatModelManager.get_model(
+                provider=config.llm_provider, model=config.report_agent_llm
+            )
+        )
+
+        state = {
+            "data_flow_reports": [
+                AgentDataFlowReport.model_validate(r.model_dump()).model_dump(
+                    mode="json"
+                )
+                for r in data_flow_reports
+            ],
+            "merged_data_flow_report": {},  # empty dict or default structure
+            "justification": "",  # placeholder string
+        }
+
+        end_state = await merge_agent.get_workflow().ainvoke(input=state)
+
+        agent_data_flow = AgentDataFlowReport.model_validate(
+            end_state["merged_data_flow_report"]
+        )
+
+        logger.info(
+            f"📝 Merge Justification:\n{end_state.get('justification', 'No justification provided.')}"
+        )
+
+        diagram = generate_dataflow_diagram(config, agent_data_flow)
+
+        report = DataFlowReport.model_validate(
+            obj={
+                "uuid": uuid.uuid4(),
+                "repository_uuid": None,
+                **agent_data_flow.model_dump(exclude_unset=True),
+                # Do not set review-related fields here; we'll aggregate them below.
+                "diagram": diagram if diagram else None,
+            }
+        )
+
+        # Collect all categorized files from the input data_flow_report list
+        all_should_review = []
+        all_reviewed = []
+        all_could_review = []
+        all_should_not_review = []
+        all_could_not_review = []
+
+        for r in data_flow_reports:
+            all_should_review.extend(r.should_review)
+            all_reviewed.extend(r.reviewed)
+            all_could_review.extend(r.could_review)
+            all_should_not_review.extend(r.should_not_review)
+            all_could_not_review.extend(r.could_not_review)
+
+        report.should_review = all_should_review
+        report.reviewed = all_reviewed
+        report.could_review = all_could_review
+        report.should_not_review = all_should_not_review
+        report.could_not_review = all_could_not_review
+
+        logger.info(f"✅ Finished data flow report merger.")
+
+        return report
+
+    except Exception as e:
+        logger.exception(f"❌ Error during data flow report merging: {str(e)}")
         raise
