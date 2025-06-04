@@ -300,8 +300,9 @@ class DataFlowReport(AgentDataFlowReport):
     uuid: UUID = Field(
         default_factory=uuid4, description="Unique identifier for the data flow report."
     )
-    repository_uuid: UUID = Field(
-        ..., description="Unique identifier for the repository."
+    repository_uuid: Optional[UUID] = Field(
+        default=None,
+        description="Unique identifier for the repository. Null if this report is merged from multiple repositories.",
     )
     should_review: List[File] = Field(
         default_factory=list, description="Set of Files requiring review."
@@ -338,7 +339,9 @@ class DataFlowReport(AgentDataFlowReport):
     def model_dump(self, **kwargs):
         data = super().model_dump(**kwargs)
         data["uuid"] = str(self.uuid)
-        data["repository_uuid"] = str(self.repository_uuid)
+        data["repository_uuid"] = (
+            str(self.repository_uuid) if self.repository_uuid is not None else None
+        )
 
         return data
 

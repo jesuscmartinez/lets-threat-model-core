@@ -100,37 +100,40 @@ def build_threat_model_config(
     config_data: dict, exclude_patterns: list
 ) -> ThreatModelConfig:
     """Creates a ThreatModelConfig instance from YAML data and environment variables."""
-    config_settings = {
-        "llm_provider": config_data.get("llm_provider", "openai"),
-        "categorization_agent_llm": config_data.get(
-            "categorization_agent_llm", "gpt-4o-mini"
-        ),
-        "review_agent_llm": config_data.get("review_agent_llm", "gpt-4o-mini"),
-        "threat_model_agent_llm": config_data.get(
-            "threat_model_agent_llm", "gpt-4o-mini"
-        ),
-        "report_agent_llm": config_data.get("report_agent_llm", "gpt-4o-mini"),
-        "context_window": config_data.get("context_window", 128000),
-        "max_output_tokens": config_data.get("max_output_tokens", 16384),
-        "review_max_file_in_batch": config_data.get("review_max_file_in_batch", 3),
-        "review_token_buffer": config_data.get("review_token_buffer", 0.5),
-        "categorize_max_file_in_batch": config_data.get(
-            "categorize_max_file_in_batch", 30
-        ),
-        "categorize_token_buffer": config_data.get("categorize_token_buffer", 0.5),
-        "categorize_only": config_data.get("categorize_only", False),
-        "completion_threshold": config_data.get("completion_threshold", 0.8),
-        "username": GITHUB_USERNAME,
-        "pat": GITHUB_PAT,
-        "generate_mitre_attacks": config_data.get("generate_mitre_attacks", True),
-        "generate_threats": config_data.get("generate_threats", True),
-        "generate_data_flow_reports": config_data.get(
-            "generate_data_flow_reports", True
-        ),
+
+    defaults = {
+        "llm_provider": "openai",
+        "categorization_agent_llm": "gpt-4o-mini",
+        "review_agent_llm": "gpt-4o-mini",
+        "threat_model_agent_llm": "gpt-4o-mini",
+        "report_agent_llm": "gpt-4o-mini",
+        "context_window": 128000,
+        "max_output_tokens": 16384,
+        "review_max_file_in_batch": 3,
+        "review_token_buffer": 0.5,
+        "categorize_max_file_in_batch": 30,
+        "categorize_token_buffer": 0.5,
+        "categorize_only": False,
+        "completion_threshold": 0.8,
+        "generate_mitre_attacks": True,
+        "generate_threats": True,
+        "generate_data_flow_reports": True,
+        "data_flow_report_strategy": ThreatModelConfig.STRATEGY_BOTH,
     }
 
-    # Remove None values
-    config_settings = {k: v for k, v in config_settings.items() if v is not None}
+    config_settings = {
+        key: config_data.get(key, default) for key, default in defaults.items()
+    }
+
+    # Add secure and required environment-based fields
+    config_settings["username"] = GITHUB_USERNAME
+    config_settings["pat"] = GITHUB_PAT
+
+    # Optional: support the strategy field
+    if "data_flow_report_strategy" in config_data:
+        config_settings["data_flow_report_strategy"] = config_data[
+            "data_flow_report_strategy"
+        ]
 
     config = ThreatModelConfig(**config_settings)
     config.add_exclude_patterns(exclude_patterns)

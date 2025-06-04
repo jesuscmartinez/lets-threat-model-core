@@ -137,9 +137,19 @@ class ThreatModelDataAgent:
             SYSTEM_GENERATE_PROMPT
         )
         user_prompt = HumanMessagePromptTemplate.from_template(
-            "Previous Summary:\n{previous_summary}\n\n"
-            "Asset:\n{asset}\n\n"
-            "DataFlowReport:\n{data_flow_report}\n\n"
+            """\
+                <previous_summary>
+                {previous_summary}
+                </previous_summary>
+                
+                <asset>
+                {asset}
+                </asset>
+
+                <data_flow_report>
+                {data_flow_report}
+                </data_flow_report>
+            """
         )
         prompt = ChatPromptTemplate.from_messages([system_prompt, user_prompt])
 

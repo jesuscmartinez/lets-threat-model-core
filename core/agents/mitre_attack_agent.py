@@ -161,11 +161,13 @@ class MitreAttackAgent:
         system_prompt = SystemMessagePromptTemplate.from_template(SYSTEM_MAP_PROMPT)
         user_prompt = HumanMessagePromptTemplate.from_template(
             """
-            DataFlowReport:
+            <data_flow_report>
             {data_flow_report}
+            </data_flow_report>
 
-            Component:
+            <component>
             {component}
+            </component>
             """
         )
         prompt = ChatPromptTemplate.from_messages([system_prompt, user_prompt])

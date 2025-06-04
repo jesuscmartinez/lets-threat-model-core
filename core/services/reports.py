@@ -67,7 +67,12 @@ def generate_threat_model_report(
             (r for r in threat_model.repos if r.uuid == report_data.repository_uuid),
             None,
         )
-        report += f"### Report {repo.name}\n"
+        if report_data.repository_uuid is None:
+            merged_repo_names = ", ".join(repo.name for repo in threat_model.repos)
+            report_title = f"Merged Report ({merged_repo_names})"
+        else:
+            report_title = f"Report {repo.name}"
+        report += f"### {report_title}\n"
         report += f"**Overview:** {report_data.overview}\n\n"
 
         report += f"### Diagram {i}\n```mermaid\n{report_data.diagram}\n```\n\n"

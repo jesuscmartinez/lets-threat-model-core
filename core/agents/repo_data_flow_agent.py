@@ -173,9 +173,6 @@ Instructions:
             •	What new information should be added.
             •	What existing information should be clarified or expanded.
             •	Maintain coherence and continuity in the report by integrating new details seamlessly.
-
-Format Instructions:
-{format_instructions}
 """
 
 
@@ -358,11 +355,13 @@ class DataFlowAgent:
         )
         user_prompt = HumanMessagePromptTemplate.from_template(
             """
-            Data Flow Report:
+            <data_flow_report>
             {data_flow_report}
+            </data_flow_report>
 
-            File Paths:
+            <file_paths>
             {file_paths}
+            </file_paths>
             """,
             partial_variables={
                 "data_flow_report": json.dumps(data_flow_report, sort_keys=True)
@@ -533,11 +532,13 @@ class DataFlowAgent:
 
         user_template = HumanMessagePromptTemplate.from_template(
             """
-            Data Flow Report:
+            <data_flow_report>
             {data_flow_report}
+            </data_flow_report>
 
-            File Data:
+            <file_data>
             {file_data}
+            </file_data>
             """
         )
 

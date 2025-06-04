@@ -1,4 +1,5 @@
 from pydantic import Field, SecretStr
+from typing import Literal, ClassVar
 
 from core.agents.repo_data_flow_agent_config import RepoDataFlowAgentConfig
 
@@ -41,4 +42,18 @@ class ThreatModelConfig(RepoDataFlowAgentConfig):
     generate_data_flow_reports: bool = Field(
         default=True,
         description="Whether to generate data flow reports",
+    )
+
+    STRATEGY_PER_REPOSITORY: ClassVar[str] = "per-repository"
+    STRATEGY_COMBINED: ClassVar[str] = "combined"
+    STRATEGY_BOTH: ClassVar[str] = "both"
+
+    data_flow_report_strategy: Literal["per-repository", "combined", "both"] = Field(
+        default=STRATEGY_PER_REPOSITORY,
+        description=(
+            "Strategy for data flow reports in the threat model: "
+            "'per-repository' for one report per repo, "
+            "'combined' for a single merged report, "
+            "'both' to include individual and combined reports."
+        ),
     )
