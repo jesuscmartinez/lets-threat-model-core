@@ -9,6 +9,13 @@ from core.agents.repo_data_flow_agent import DataFlowAgent, GraphStateModel
 from core.agents.repo_data_flow_agent_config import RepoDataFlowAgentConfig
 from core.agents.agent_tools import AgentHelper
 from core.models.dtos.File import File
+from core.models.dtos.DataFlowReport import (
+    AgentDataFlowReport,
+    ExternalEntity,
+    Process,
+    DataStore,
+    TrustBoundary,
+)
 from git import Repo as GitRepo
 from langgraph.graph import StateGraph, START, END
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -184,12 +191,13 @@ def test_get_report_stats(data_flow_agent, initial_graph_state):
     initial_graph_state.should_not_review = {File(file_path="c.txt", justification="")}
     initial_graph_state.reviewed = {File(file_path="d.md", justification="")}
     initial_graph_state.could_not_review = {File(file_path="e.tmp", justification="")}
-    initial_graph_state.data_flow_report = {
-        "external_entities": [{"name": "Entity1", "description": "Desc1"}],
-        "processes": [{"name": "Proc1", "description": "DescP"}],
-        "data_stores": [{"name": "Store1", "description": "DescS"}],
-        "trust_boundaries": [{"name": "Boundary1", "description": "DescB"}],
-    }
+    initial_graph_state.data_flow_report = AgentDataFlowReport(
+        overview="Test overview",
+        external_entities=[ExternalEntity(name="Entity1", description="Desc1")],
+        processes=[Process(name="Proc1", description="DescP")],
+        data_stores=[DataStore(name="Store1", description="DescS")],
+        trust_boundaries=[TrustBoundary(name="Boundary1", description="DescB")],
+    )
     stats = data_flow_agent.get_report_stats(initial_graph_state)
     assert "Total Files:" in stats
     assert "Reviewed:" in stats

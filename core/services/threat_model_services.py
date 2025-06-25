@@ -3,7 +3,11 @@ from pydantic import SecretStr
 from core.agents.diagram_agent import DiagramAgent
 from core.agents.merge_data_flows_agent import MergeDataFlowAgent
 from core.agents.mitre_attack_agent import MitreAttackAgent
-from core.agents.repo_data_flow_agent import DataFlowAgent, AgentDataFlowReport
+from core.agents.repo_data_flow_agent import (
+    DataFlowAgent,
+    AgentDataFlowReport,
+    GraphStateModel,
+)
 from core.agents.threat_model_agent import ThreatModelAgent
 from core.models.dtos.Asset import Asset
 from core.models.dtos.MitreAttack import AgentAttack, Attack
@@ -49,6 +53,8 @@ async def generate_threat_model(
 
         strategy = config.data_flow_report_strategy
 
+        # Depending on the strategy, we either keep individual reports,
+        # combine them, or keep both combined and individual reports.
         if strategy == ThreatModelConfig.STRATEGY_PER_REPOSITORY:
             threat_model.data_flow_reports = individual_reports
         elif strategy == ThreatModelConfig.STRATEGY_COMBINED:
@@ -130,7 +136,7 @@ async def generate_mitre_attack(
     try:
         mitre_attack_agent = MitreAttackAgent(
             model=ChatModelManager.get_model(
-                provider=config.llm_provider, model=config.review_agent_llm
+                provider=config.llm_provider, model=config.threat_model_agent_llm
             )
         )
 
@@ -184,8 +190,8 @@ async def process_local_repository(
         directory=str(repo_path),
     )
 
-    state = generate_data_flow_state()
-    return await data_flow_agent.get_workflow().ainvoke(input=state)
+    # state = generate_data_flow_state()
+    return await data_flow_agent.get_workflow().ainvoke(input=GraphStateModel())
 
 
 async def process_remote_repository(
@@ -209,13 +215,13 @@ async def process_remote_repository(
             directory=temp_dir,
         )
 
-        state = generate_data_flow_state()
-        return await data_flow_agent.get_workflow().ainvoke(input=state)
+        # state = generate_data_flow_state()
+        return await data_flow_agent.get_workflow().ainvoke(input=GraphStateModel())
 
 
 def clone_repository(
     username: str, pat: SecretStr, repo_url: str, temp_dir: str
-) -> Any:
+) -> GitRepo:
     """Clone the repository into a temporary directory."""
     try:
         logger.info(
@@ -268,18 +274,6 @@ def create_data_flow_agent(
         password=config.pat,
         config=config,
     )
-
-
-def generate_data_flow_state() -> dict:
-    """Generates the initial state for the data flow workflow."""
-    return {
-        "should_review": set(),
-        "should_not_review": set(),
-        "could_review": set(),
-        "could_not_review": set(),
-        "reviewed": set(),
-        "data_flow_report": AgentDataFlowReport().model_dump(mode="json"),
-    }
 
 
 def generate_dataflow_diagram(

@@ -1,3 +1,6 @@
+from langchain_core.runnables import Runnable
+import core.agents.threat_model_data_agent as tmd
+from pydantic import BaseModel
 import copy
 import pytest
 import json
@@ -8,6 +11,38 @@ from core.agents.threat_model_data_agent import (
     ThreatModelDataAgent,
     ThreatModelDataStateModel,
 )
+
+
+# -----------------------------------------------------------------------------
+# Dummy Runnable for Trustcall Extractor (used in monkeypatch)
+# -----------------------------------------------------------------------------
+class DummyResult(BaseModel):
+    title: str
+    summary: str
+
+
+class DummyRunnable(Runnable):
+    """Minimal runnable that mimics a trustcall extractor for tests."""
+
+    def invoke(self, input, config=None):
+        return {
+            "responses": [
+                DummyResult(
+                    title="Mock Threat Model Title",
+                    summary="Mock summary of threat model analysis.",
+                )
+            ]
+        }
+
+    async def ainvoke(self, input, config=None):
+        return {
+            "responses": [
+                DummyResult(
+                    title="Mock Threat Model Title",
+                    summary="Mock summary of threat model analysis.",
+                )
+            ]
+        }
 
 
 # -----------------------------------------------------------------------------
@@ -63,20 +98,11 @@ def test_initialize_valid_data(mock_agent, valid_state):
 # Unit Tests for `generate` (Async) Method
 # -----------------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_generate(mock_agent, mocker, valid_state):
+async def test_generate(mock_agent, mocker, valid_state, monkeypatch):
     """Test the generate method for correctly invoking the LLM chain."""
-    # Expected LLM result.
-    mock_result = {
-        "title": "Mock Threat Model Title",
-        "summary": "Mock summary of threat model analysis.",
-    }
-
-    # Create a mock chain that simulates the asynchronous LLM call.
-    patched_chain = AsyncMock(return_value=mock_result)
-
-    # Patch the `with_structured_output` method on the agent's model to return our mock chain.
-    mocker.patch.object(
-        mock_agent.model, "with_structured_output", return_value=patched_chain
+    # Patch trustcall.create_extractor used inside ThreatModelDataAgent
+    monkeypatch.setattr(
+        tmd, "create_extractor", lambda *args, **kwargs: DummyRunnable()
     )
 
     # Call the async generate method.

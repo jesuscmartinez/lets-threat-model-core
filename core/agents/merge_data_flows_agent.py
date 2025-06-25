@@ -15,6 +15,7 @@ from langchain_core.prompts import (
 from regex import F
 from core.agents.agent_tools import AgentHelper, ainvoke_with_retry
 from langgraph.graph import StateGraph, START, END
+from trustcall import create_extractor
 
 
 logger = logging.getLogger(__name__)
@@ -45,17 +46,9 @@ Objectives:
 	2.	Identify and merge overlapping or duplicate components (e.g., similar processes or external entities), ensuring semantic accuracy and role preservation.
 	3.	Retain all distinct data flows and trust boundaries from the original reports.
 	4.	Provide a concise justification that explains:
-	•	Your strategy for merging components
-	•	How overlaps were resolved
-	•	How the integrity and intent of the original models were maintained
-
-Output Requirements:
-
-Produce a JSON object matching the Result model schema. The JSON must contain:
-	•	"data_flow_report": a merged report consistent in structure with the input reports
-	•	"justification": a plain-language explanation of the merge logic and reasoning
-
-Ensure that the JSON is valid and structurally consistent with the Result schema definition.
+        •	Your strategy for merging components
+        •	How overlaps were resolved
+        •	How the integrity and intent of the original models were maintained
 """
 
 
@@ -92,7 +85,7 @@ class MergeDataFlowAgent:
         """
         Use the LLM to merge multipule data_flows_reports.
         """
-        logger.info("🧠🔀 Merging data flow reports with LLM assistance...")
+        logger.info("🧠 => 🔀 Merging data flow reports with LLM assistance...")
 
         # Pydantic model for LLM results
         class Result(BaseModel):
@@ -116,8 +109,10 @@ class MergeDataFlowAgent:
         prompt = ChatPromptTemplate.from_messages([system_prompt, user_prompt])
 
         # Build chain with structured output
-        chain = prompt | self.model.with_structured_output(
-            schema=Result.model_json_schema()
+        chain = prompt | create_extractor(
+            self.model,
+            tools=[Result],
+            tool_choice="Result",
         )
 
         # Prepare inputs
@@ -133,10 +128,7 @@ class MergeDataFlowAgent:
 
         # Invoke the chain with retry logic
         result = await ainvoke_with_retry(chain, chain_inputs)
-
-        # Ensure result is parsed correctly
-        if isinstance(result, dict):
-            result = Result(**result)
+        result = result["responses"][0]
 
         state.merged_data_flow_report = result.data_flow_report
         state.justification = result.justification

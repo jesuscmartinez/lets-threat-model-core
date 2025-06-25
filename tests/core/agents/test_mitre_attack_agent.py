@@ -18,7 +18,7 @@ class DummyModel(BaseChatModel):
         # Stub for chaining prompts; return self for simplicity
         return self
 
-    def bind_tools(self, tools):
+    def bind_tools(self, tools, **kwargs):
         # Stub for binding tools; return self for simplicity
         return self
 
@@ -72,9 +72,10 @@ async def test_process_component_success(monkeypatch, agent):
     component = {"name": "comp1"}
     report = {}
 
-    # Stub ainvoke_with_retry to return a successful attack Result object
+    # Stub ainvoke_with_retry to return a successful attack object
     async def fake_ainvoke(chain, data):
-        return Result(
+
+        resp = Result(
             attacks=[
                 AgentAttack(
                     component_uuid=uuid.UUID("16ad7dc6-05ec-442c-ae9a-488eebc79c13"),
@@ -91,6 +92,7 @@ async def test_process_component_success(monkeypatch, agent):
                 )
             ]
         )
+        return {"responses": [resp]}
 
     monkeypatch.setattr(mitre_module, "ainvoke_with_retry", fake_ainvoke)
 
