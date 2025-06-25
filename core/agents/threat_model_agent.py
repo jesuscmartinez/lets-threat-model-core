@@ -4,7 +4,6 @@ import logging
 import asyncio
 import json
 import logging
-import re
 from typing import Any, Dict, List
 
 from pydantic import BaseModel, Field
@@ -25,6 +24,7 @@ from core.agents.agent_tools import (
     invoke_with_retry,
 )
 from langgraph.graph import StateGraph, START, END
+from trustcall import create_extractor
 
 logger = logging.getLogger(__name__)
 
@@ -182,15 +182,11 @@ class ThreatModelAgent:
 
             threats: List[AgentThreat] = Field(..., description="Identified threats.")
 
-        parser = JsonOutputParser(pydantic_object=Result)
-        format_instructions = parser.get_format_instructions()
-
         system_prompt_template = SYSTEM_PROMPT_ANALYZE
 
         # Select the appropriate system prompt template
         system_prompt = SystemMessagePromptTemplate.from_template(
             system_prompt_template,
-            partial_variables={"format_instructions": format_instructions},
         )
 
         user_prompt = HumanMessagePromptTemplate.from_template(
@@ -211,8 +207,8 @@ class ThreatModelAgent:
 
         prompt = ChatPromptTemplate.from_messages([system_prompt, user_prompt])
 
-        chain = prompt | self.model.with_structured_output(
-            schema=Result.model_json_schema()
+        chain = prompt | create_extractor(
+            self.model, tools=[Result], tool_choice="Result"
         )
 
         asset = state.asset
@@ -273,7 +269,7 @@ class ThreatModelAgent:
                 },
             )
 
-            threats = result.get("threats", []) if isinstance(result, dict) else []
+            threats = result["responses"][0].threats
             logger.debug(
                 "Identified %d threats in component: %s",
                 len(threats),
@@ -353,7 +349,7 @@ class ThreatModelAgent:
     # -------------------------------------------------------------------------
     # Logging / Reporting Helpers
     # -------------------------------------------------------------------------
-    def _log_threat_state(self, threats: List[Dict[str, Any]]) -> None:
+    def _log_threat_state(self, threats: List[AgentThreat]) -> None:
         """Log summary of identified threats, including STRIDE distribution and risk levels."""
         if not threats:
             logger.warning("No threats identified.")
@@ -373,8 +369,8 @@ class ThreatModelAgent:
         risk_counts = {"Low": 0, "Medium": 0, "High": 0, "Critical": 0}
 
         for threat in threats:
-            stride = threat.get("stride_category", "Unknown")
-            risk = threat.get("risk_rating", "Unknown")
+            stride = getattr(threat, "stride_category", "Unknown")
+            risk = getattr(threat, "risk_rating", "Unknown")
 
             stride_counts[stride] = stride_counts.get(stride, 0) + 1
             risk_counts[risk] = risk_counts.get(risk, 0) + 1

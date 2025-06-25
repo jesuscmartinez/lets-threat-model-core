@@ -15,6 +15,7 @@ from typing import Optional, Any, Dict, List, cast
 
 from core.models.dtos.MitreAttack import AgentAttack, Attack
 from langchain_core.runnables import Runnable
+from trustcall import create_extractor
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +105,7 @@ class MitreAttackAgent:
                 },
             )
 
-            attacks = result.attacks if isinstance(result, Result) else []
+            attacks = result["responses"][0].attacks
             logger.debug(
                 "Identified %d attacks in component: %s",
                 len(attacks),
@@ -185,9 +186,11 @@ class MitreAttackAgent:
                 )
             ),
         )
-        structured_model = self.model.with_structured_output(schema=Result)
-        chain = prompt | structured_model
-        logger.debug("🛠️ Tool-bound chain ready; starting component analysis")
+        chain = prompt | create_extractor(
+            self.model,
+            tools=[Result],
+            tool_choice="Result",
+        )
 
         tasks = [
             self._process_component(component, report, chain)

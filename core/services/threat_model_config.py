@@ -17,6 +17,7 @@ class ThreatModelConfig(RepoDataFlowAgentConfig):
     )
 
     llm_provider: str = Field(default="openai", description="LLM Provider")
+
     categorization_agent_llm: str = Field(
         default="gpt-4o-mini", description="LLM model for categorization agent"
     )

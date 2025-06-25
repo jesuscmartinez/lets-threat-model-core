@@ -1,3 +1,4 @@
+from calendar import c
 import logging
 import logging
 import json
@@ -14,6 +15,7 @@ from langchain_core.prompts import (
 )
 from core.agents.agent_tools import AgentHelper, ainvoke_with_retry
 from langgraph.graph import StateGraph, START, END
+from trustcall import create_extractor
 
 
 logger = logging.getLogger(__name__)
@@ -154,8 +156,10 @@ class ThreatModelDataAgent:
         prompt = ChatPromptTemplate.from_messages([system_prompt, user_prompt])
 
         # Build chain with structured output
-        chain = prompt | self.model.with_structured_output(
-            schema=Result.model_json_schema()
+        chain = prompt | create_extractor(
+            self.model,
+            tools=[Result],
+            tool_choice="Result",
         )
 
         # Prepare inputs
@@ -195,9 +199,7 @@ class ThreatModelDataAgent:
             # Invoke the chain with retry logic
             result = await ainvoke_with_retry(chain, chain_inputs)
 
-            # Ensure result is parsed correctly
-            if isinstance(result, dict):
-                result = Result(**result)
+            result = result["responses"][0]
 
             # Update the running summary with the latest result
             previous_summary = result.summary

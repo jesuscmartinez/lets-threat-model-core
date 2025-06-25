@@ -3,15 +3,12 @@ import os
 import asyncio
 import fnmatch
 import json
-import re
 from tempfile import TemporaryDirectory
-from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from typing import Optional, Set, List, Dict, Any
 from typing import Set, List, Dict, Any
 
 from pydantic import BaseModel, Field, SecretStr
-from git import Repo as GitRepo
 
 # LangChain and local imports
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -21,19 +18,17 @@ from langchain_core.prompts import (
     HumanMessagePromptTemplate,
     ChatPromptTemplate,
 )
-from langchain_core.output_parsers import JsonOutputParser
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langgraph.graph import StateGraph, START, END
 from core.agents.agent_tools import (
     AgentHelper,
     ainvoke_with_retry,
     invoke_with_retry,
-    is_rate_limit_error,
 )
-from core.agents.chat_model_manager import ChatModelManager
 from core.agents.repo_data_flow_agent_config import RepoDataFlowAgentConfig
 from core.models.dtos.File import File
 from core.models.dtos.DataFlowReport import AgentDataFlowReport
+from trustcall import create_extractor
+
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +42,7 @@ class GraphStateModel(BaseModel):
     should_review: Set[File] = Field(default_factory=set)
     could_review: Set[File] = Field(default_factory=set)
     should_not_review: Set[File] = Field(default_factory=set)
-    data_flow_report: Dict[str, Any] = Field(default_factory=dict)
+    data_flow_report: AgentDataFlowReport = Field(default_factory=AgentDataFlowReport)
     reviewed: Set[File] = Field(default_factory=set)
     could_not_review: Set[File] = Field(default_factory=set)
 
@@ -225,12 +220,12 @@ class DataFlowAgent:
             + count_could_not
         )
 
-        # DataFlow statistics
-        report = state.data_flow_report
-        total_external_entities = len(report.get("external_entities", []))
-        total_processes = len(report.get("processes", []))
-        total_data_stores = len(report.get("data_stores", []))
-        total_trust_boundaries = len(report.get("trust_boundaries", []))
+        # Data Flow Report statistics
+        report: AgentDataFlowReport = state.data_flow_report
+        total_external_entities = len(report.external_entities)
+        total_processes = len(report.processes)
+        total_data_stores = len(report.data_stores)
+        total_trust_boundaries = len(report.trust_boundaries)
 
         lines = [
             "📊 Data Flow Report Summary:",
@@ -248,20 +243,18 @@ class DataFlowAgent:
         ]
 
         # External Entities
-        for entity in report.get("external_entities", []):
-            lines.append(
-                f"🌍 External Entity: {entity['name']} - {entity['description']}"
-            )
+        for entity in report.external_entities:
+            lines.append(f"🌍 External Entity: {entity.name} - {entity.description}")
         # Processes
-        for process in report.get("processes", []):
-            lines.append(f"🔄 Process: {process['name']} - {process['description']}")
+        for process in report.processes:
+            lines.append(f"🔄 Process: {process.name} - {process.description}")
         # Data Stores
-        for store in report.get("data_stores", []):
-            lines.append(f"🗄️ Data Store: {store['name']} - {store['description']}")
+        for store in report.data_stores:
+            lines.append(f"🗄️ Data Store: {store.name} - {store.description}")
         # Trust Boundaries
-        for boundary in report.get("trust_boundaries", []):
+        for boundary in report.trust_boundaries:
             lines.append(
-                f"🔐  Trust Boundary: {boundary['name']} - {boundary['description']}"
+                f"🔐  Trust Boundary: {boundary.name} - {boundary.description}"
             )
 
         return "\n".join(lines)
@@ -337,7 +330,25 @@ class DataFlowAgent:
           - Should Not Review
         """
 
-        logger.info("🔄 Starting file categorization process with LLM...")
+        # We'll parse the LLM output into these fields
+        class CategorizationResult(BaseModel):
+            should_review: List[File]
+            could_review: List[File]
+            should_not_review: List[File]
+
+        # Helper function to process a batch of file paths
+        async def _batch_categorize_files(batch: List[str]) -> CategorizationResult:
+            if not batch:
+                return CategorizationResult(
+                    should_review=[], could_review=[], should_not_review=[]
+                )
+            file_data = [{"file_path": fp} for fp in batch]
+            result = await ainvoke_with_retry(
+                chain, {"file_paths": json.dumps(file_data, sort_keys=True)}
+            )
+            return result["responses"][0]
+
+        logger.info("🧠 => 🔄 Starting file categorization process with LLM...")
 
         # Consolidate 'should_review' + 'could_review' to feed to LLM
         files_to_categorize = state.should_review | state.could_review
@@ -364,38 +375,18 @@ class DataFlowAgent:
             </file_paths>
             """,
             partial_variables={
-                "data_flow_report": json.dumps(data_flow_report, sort_keys=True)
+                "data_flow_report": json.dumps(
+                    data_flow_report.model_dump_json(), sort_keys=True
+                )
             },
         )
         prompt = ChatPromptTemplate.from_messages([system_prompt, user_prompt])
 
-        # We'll parse the LLM output into these fields
-        class CategorizationResult(BaseModel):
-            should_review: List[File]
-            could_review: List[File]
-            should_not_review: List[File]
-
-        chain = prompt | self.categorize_model.with_structured_output(
-            CategorizationResult
+        chain = prompt | create_extractor(
+            self.categorize_model,
+            tools=[CategorizationResult],
+            tool_choice="CategorizationResult",
         )
-
-        # Helper function to process a batch of file paths
-        @retry(
-            retry=retry_if_exception(is_rate_limit_error),
-            wait=wait_exponential(multiplier=1, min=2, max=60),
-            stop=stop_after_attempt(5),
-            reraise=True,
-        )
-        async def _batch_categorize_files(batch: List[str]) -> CategorizationResult:
-            if not batch:
-                return CategorizationResult(
-                    should_review=[], could_review=[], should_not_review=[]
-                )
-            file_data = [{"file_path": fp} for fp in batch]
-            result = await ainvoke_with_retry(
-                chain, {"file_paths": json.dumps(file_data, sort_keys=True)}
-            )
-            return result
 
         # We'll store the final results here before merging with 'state'
         new_state_sets = {
@@ -514,20 +505,15 @@ class DataFlowAgent:
         return state
 
     def review_files(self, state: GraphStateModel) -> GraphStateModel:
-        logger.info("🔄 Starting file review process with LLM...")
+        logger.info("🧠 => 🔄 Starting file review process with LLM...")
 
         should_review = state.should_review
         reviewed = state.reviewed
         could_not_review = state.could_not_review
         report = state.data_flow_report
 
-        # Prepare the prompts
-        parser = JsonOutputParser(pydantic_object=AgentDataFlowReport)
-        format_instructions = parser.get_format_instructions()
-
         system_template = SystemMessagePromptTemplate.from_template(
             SYSTEM_PROMPT_REVIEW,
-            partial_variables={"format_instructions": format_instructions},
         )
 
         user_template = HumanMessagePromptTemplate.from_template(
@@ -544,16 +530,16 @@ class DataFlowAgent:
 
         prompt = ChatPromptTemplate.from_messages([system_template, user_template])
 
-        # For structured output
-        chain = prompt | self.review_model.with_structured_output(
-            schema=AgentDataFlowReport.model_json_schema(),
+        chain = prompt | create_extractor(
+            self.review_model,
+            tools=[AgentDataFlowReport],
+            tool_choice="AgentDataFlowReport",
         )
 
         # We'll process until no more files to review
         while should_review:
 
-            # Recompute report_json and token budget every iteration
-            report_json = json.dumps(report, sort_keys=True)
+            report_json = report.model_dump_json()
             report_token_count = self.review_model.get_num_tokens(report_json)
 
             token_budget = (
@@ -616,7 +602,6 @@ class DataFlowAgent:
                 # Retry loop for LLM batch failures with batch reduction
                 attempt_batch = batch_files
                 attempt_processed_files = processed_files
-                batch_success = False
                 while attempt_batch:
                     try:
                         llm_result = invoke_with_retry(
@@ -626,7 +611,7 @@ class DataFlowAgent:
                                 "data_flow_report": report_json,
                             },
                         )
-                        report = llm_result
+                        report = llm_result["responses"][0]
                         logger.info(
                             "Processed %d/%d files successfully.",
                             len(attempt_processed_files),
@@ -634,7 +619,6 @@ class DataFlowAgent:
                         )
                         reviewed.update(attempt_processed_files)
                         should_review = should_review - set(attempt_processed_files)
-                        batch_success = True
                         break
                     except Exception as e:
                         logger.error(
@@ -666,11 +650,7 @@ class DataFlowAgent:
                                         file_path=file["filepath"], justification=str(e)
                                     )
                                 )
-                            batch_success = False
                             break
-                # After each retry, restore any deferred files to should_review
-                # (already handled in the except block)
-                # If batch_success is False, processed_files already handled above
 
             # ---------------------------------------------------------------------
             # Edge-case safeguard:

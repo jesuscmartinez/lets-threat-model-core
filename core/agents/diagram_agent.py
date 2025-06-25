@@ -1,6 +1,5 @@
 from typing import TypedDict
 from core.agents.threat_model_data_agent import SYSTEM_GENERATE_PROMPT
-from core.models.dtos.DataFlowReport import DataFlowReport
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.prompts import (
     SystemMessagePromptTemplate,
@@ -10,6 +9,7 @@ from langchain_core.prompts import (
 from core.agents.agent_tools import AgentHelper, invoke_with_retry
 from langgraph.graph import StateGraph, START, END
 from pydantic import BaseModel, Field
+from trustcall import create_extractor
 
 SYSTEM_GENERATE_PROMPT = """\
 You are a system analysis assistant. Your task is to generate a Mermaid.js-compatible diagram that clearly illustrates the data flows in a software system based on the provided DataFlowReport.
@@ -63,8 +63,10 @@ class DiagramAgent:
         prompt = ChatPromptTemplate.from_messages([system_prompt, user_prompt])
 
         # Build chain with structured output
-        chain = prompt | self.model.with_structured_output(
-            schema=Result.model_json_schema()
+        chain = prompt | create_extractor(
+            self.model,
+            tools=[Result],
+            tool_choice="Result",
         )
 
         inputs = {
@@ -74,11 +76,7 @@ class DiagramAgent:
         # Invoke the chain with retry logic
         result = invoke_with_retry(chain, inputs)
 
-        # Ensure result is parsed correctly
-        if isinstance(result, dict):
-            result = Result(**result)
-
-        state["mermaid_diagram"] = result.mermaid_diagram
+        state["mermaid_diagram"] = result["responses"][0].mermaid_diagram
 
         return state
 
