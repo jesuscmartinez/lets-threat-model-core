@@ -24,6 +24,7 @@ class ChatModelManager:
         cls,
         provider: str,
         model: str,
+        base_url: Optional[str] = "http://localhost:11434",
         api_key: Optional[SecretStr] = None,
         top_p: float = 1.0,
         temperature: float = 0.0,
@@ -56,13 +57,13 @@ class ChatModelManager:
                 "rate_limiter": rate_limiter,
             }
             if provider.lower() == "anthropic":
-                api_key = api_key or SecretStr(os.getenv("ANTHROPIC_API_KEY", ""))
+                api_key = api_key or SecretStr(os.getenv("PROVIDER_API_KEY", ""))
                 init_kwargs["api_key"] = api_key
 
                 del init_kwargs["frequency_penalty"]
                 del init_kwargs["presence_penalty"]
             elif provider.lower() == "openai":
-                api_key = api_key or SecretStr(os.getenv("OPENAI_API_KEY", ""))
+                api_key = api_key or SecretStr(os.getenv("PROVIDER_API_KEY", ""))
                 init_kwargs["api_key"] = api_key
 
                 if re.match(r"o\d-", model.lower()):
@@ -72,7 +73,6 @@ class ChatModelManager:
                     del init_kwargs["temperature"]
 
             elif provider.lower() == "ollama":
-                base_url = os.getenv("OLLAMA_BASE_URL", None)
                 init_kwargs["base_url"] = base_url
 
             return init_chat_model(**init_kwargs)

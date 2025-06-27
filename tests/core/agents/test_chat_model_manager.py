@@ -70,17 +70,13 @@ def mock_getenv():
                 "frequency_penalty": 0.0,
                 "presence_penalty": 0.0,
                 "rate_limiter": rate_limiter,
-                "base_url": "http://test_base_url",
+                "base_url": "http://localhost:11434",
             },
         ),
     ],
 )
 def test_get_model(mock_init_chat_model, mock_getenv, provider, model, expected_call):
     """Test model creation with different providers."""
-    if provider == "ollama":
-        mock_getenv.return_value = "http://test_base_url"
-    else:
-        mock_getenv.return_value = "test_api_key"
 
     created_model = ChatModelManager.get_model(
         provider=provider, model=model, api_key=SecretStr("test_api_key")
