@@ -1,3 +1,4 @@
+from json import tool
 import logging
 import os
 import asyncio
@@ -422,13 +423,13 @@ class DataFlowAgent:
         files_list.sort(key=lambda x: x.file_path)
         current_batch = []
         current_token_count = 0
+        tool_overhead_tokens = 300  # Estimated overhead for tool invocation
         max_tokens = (
             self.config.context_window
             - self.config.max_output_tokens
-            - self.categorize_model.get_num_tokens(
-                prompt.format(file_paths="", data_flow_report="")
-            )
+            - self.categorize_model.get_num_tokens(prompt.format(file_paths=""))
         )
+        max_tokens -= tool_overhead_tokens
 
         tasks = []
         for fobj in files_list:
@@ -540,15 +541,16 @@ class DataFlowAgent:
         while should_review:
 
             report_json = report.model_dump_json()
-            report_token_count = self.review_model.get_num_tokens(report_json)
+            # report_token_count = self.review_model.get_num_tokens(report_json)
 
+            tool_overhead_tokens = 300  # Estimated overhead for tool invocation
             token_budget = (
                 self.config.context_window
                 - self.config.max_output_tokens
                 - self.review_model.get_num_tokens(
                     prompt.format(file_data="", data_flow_report=report_json)
                 )
-                - report_token_count
+                - tool_overhead_tokens
             )
 
             # ---------------------------------------------------------------------
@@ -558,7 +560,9 @@ class DataFlowAgent:
             # remaining files as unreviewable to break the loop.
             # ---------------------------------------------------------------------
             if token_budget <= 0:
-                justification = f"Data flow report too large to fit in context window ({report_token_count} tokens)."
+                justification = (
+                    f"Data flow report too large to fit in context window tokens)."
+                )
                 for f in list(should_review):
                     could_not_review.add(
                         File(file_path=f.file_path, justification=justification)

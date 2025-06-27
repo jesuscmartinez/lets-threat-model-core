@@ -1,3 +1,4 @@
+from openai import base_url
 from pydantic import Field, SecretStr
 from typing import Literal, ClassVar
 
@@ -17,6 +18,10 @@ class ThreatModelConfig(RepoDataFlowAgentConfig):
     )
 
     llm_provider: str = Field(default="openai", description="LLM Provider")
+
+    base_url: str = Field(
+        default=str(base_url), description="Base URL for the LLM provider API"
+    )
 
     categorization_agent_llm: str = Field(
         default="gpt-4o-mini", description="LLM model for categorization agent"

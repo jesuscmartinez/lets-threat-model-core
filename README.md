@@ -73,7 +73,7 @@ config:
 
 Create a .env file in your project root:
 ```ini
-OPENAI_API_KEY=your_openai_key
+PROVIDER_API_KEY=your_llm_provider_key
 GITHUB_USERNAME=your_github_username
 GITHUB_PAT=your_github_token
 LOG_LEVEL=INFO
@@ -165,14 +165,9 @@ GITHUB_USERNAME=username
 GITHUB_PAT=personal_access_token
 
 # ----------------------------
-# OPENAI Configuration
+# LLM Configuration
 # ----------------------------
-OPENAI_API_KEY=api_key
-
-# ----------------------------
-# ANTHROPIC Configuration
-# ----------------------------
-ANTHROPIC_API_KEY=api_key
+PROVIDER_API_KEY=api_key
 ```
 ## Field Descriptions
 
