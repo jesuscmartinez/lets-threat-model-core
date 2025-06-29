@@ -26,7 +26,6 @@ from core.services.threat_model_services import generate_threat_model
 from core.services.reports import generate_threat_model_report
 
 
-load_dotenv()
 # Get LOG_LEVEL from env or default to INFO
 log_level_str = os.getenv("LOG_LEVEL", "INFO").upper()
 log_level = getattr(logging, log_level_str, logging.INFO)
@@ -38,10 +37,6 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
-
-# Load secrets
-GITHUB_USERNAME = os.getenv("GITHUB_USERNAME", "")
-GITHUB_PAT = SecretStr(os.getenv("GITHUB_PAT", ""))
 
 
 def load_yaml_config(file_path: str) -> dict:
@@ -126,8 +121,8 @@ def build_threat_model_config(
     }
 
     # Add secure and required environment-based fields
-    config_settings["username"] = GITHUB_USERNAME
-    config_settings["pat"] = GITHUB_PAT
+    config_settings["username"] = os.getenv("GITHUB_USERNAME", "")
+    config_settings["pat"] = SecretStr(os.getenv("GITHUB_PAT", ""))
 
     # Optional: support the strategy field
     if "data_flow_report_strategy" in config_data:
@@ -146,6 +141,7 @@ async def main(
     json_output_file: Optional[str] = None,
     sarif_output_file: Optional[str] = None,
 ):
+    load_dotenv()
     """Loads asset and repositories from YAML and generates a threat model report in Markdown format."""
     try:
         config = load_yaml_config(yaml_file)

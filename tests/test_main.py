@@ -1,190 +1,207 @@
-from ast import Str
-from re import L, S
-import unittest
-import tempfile
-
 import yaml
 from pathlib import Path
-from uuid import uuid4, UUID
-from unittest.mock import patch, AsyncMock, MagicMock
+import pytest
+import asyncio
+from core.services.threat_model_config import ThreatModelConfig
+
+from main import (
+    parse_asset,
+    build_threat_model_config,
+    load_yaml_config,
+    parse_repositories,
+    main,
+)
 
 
-# Import functions and models from your project.
-from core.models.enums import Level, StrideCategory
-import main
-from main import parse_asset, ThreatModel
-from core.models.dtos.DataFlowReport import DataFlowReport
-from core.models.dtos.Repository import Repository
-from core.models.dtos.Threat import Threat
-from core.models.dtos.MitreAttack import Attack
-
-# ----------------------------------------
-# Fixtures for testing
-# ----------------------------------------
+@pytest.fixture(autouse=True)
+def github_env(monkeypatch):
+    """Automatically set GitHub env vars for all tests."""
+    monkeypatch.setenv("GITHUB_USERNAME", "test_user")
+    monkeypatch.setenv("GITHUB_PAT", "test_pat")
 
 
-class TestThreatModelGeneration(unittest.IsolatedAsyncioTestCase):
-    def setUp(self):
-        # Create a temporary directory for test files.
-        self.test_dir = tempfile.TemporaryDirectory()
-        self.config_file_path = Path(self.test_dir.name) / "config.yaml"
-        self.markdown_output_path = Path(self.test_dir.name) / "output.md"
-        self.json_output_path = Path(self.test_dir.name) / "output.json"
-        self.sarif_output_path = Path(self.test_dir.name) / "output.sarif"
+@pytest.fixture
+def test_asset() -> dict:
+    return {
+        "name": "Test Asset",
+        "description": "Test asset description",
+        "internet_facing": True,
+        "authn_type": "NONE",
+        "data_classification": "PUBLIC",
+    }
 
-        # Write a minimal YAML config file.
-        config_data = {
-            "asset": {
-                "name": "Test Asset",
-                "description": "Test asset description",
-                "internet_facing": True,
-                "authn_type": "NONE",
-                "data_classification": "PUBLIC",
-            },
-            "repositories": [
-                {
-                    "name": "Test Repo",
-                    "description": "A test repository",
-                    "url": "https://example.com/repo",
-                }
-            ],
-            "config": {
-                "llm_provider": "openai",
-                "categorization_agent_llm": "gpt-4o-mini",
-                "review_agent_llm": "gpt-4o-mini",
-                "threat_model_agent_llm": "gpt-4o-mini",
-                "report_agent_llm": "gpt-4o-mini",
-                "context_window": 128000,
-                "max_output_tokens": 16384,
-                "review_max_file_in_batch": 3,
-                "review_token_buffer": 0.5,
-                "categorize_max_file_in_batch": 30,
-                "categorize_token_buffer": 0.5,
-                "categorize_only": False,
-                "completion_threshold": 0.8,
-            },
-            "exclude_patterns": [],
+
+@pytest.fixture
+def test_repositories() -> list[dict]:
+    return [
+        {
+            "name": "Test Repo",
+            "description": "A test repository",
+            "url": "https://example.com/repo",
         }
-        with open(self.config_file_path, "w") as f:
-            yaml.dump(config_data, f)
-
-    def tearDown(self):
-        self.test_dir.cleanup()
-
-    # Test the main threat model generation and output of Markdown, JSON, and SARIF files.
-    @patch("main.generate_threat_model", new_callable=AsyncMock)
-    @patch("main.generate_threat_model_report")
-    async def test_main_generates_all_reports(
-        self,
-        mock_generate_threat_model_report,
-        mock_generate_threat_model,
-    ):
-        # Setup a dummy ThreatModel that will be returned by generate_threat_model.
-        dummy_asset = parse_asset(
-            {
-                "name": "Test Asset",
-                "description": "Test asset description",
-                "internet_facing": True,
-                "authn_type": "NONE",
-                "data_classification": "PUBLIC",
-            }
-        )
-
-        dummy_repo = Repository(
-            uuid=uuid4(),
-            name="Repo",
-            description="desc",
-            url="https://repo.com",
-            asset_uuid=dummy_asset.uuid,
-        )
-        dummy_data_flow_report = DataFlowReport(
-            uuid=uuid4(),
-            repository_uuid=dummy_repo.uuid,
-            external_entities=[],
-            processes=[],
-            data_stores=[],
-            trust_boundaries=[],
-            should_review=[],
-            reviewed=[],
-            could_review=[],
-            should_not_review=[],
-            could_not_review=[],
-            diagram="graph TD",
-        )
-        dummy_threat = Threat(
-            uuid=uuid4(),
-            data_flow_report_uuid=dummy_data_flow_report.uuid,
-            name="Dummy Threat",
-            description="Threat desc",
-            stride_category=StrideCategory.REPUDIATION,
-            component_names=["Comp"],
-            component_uuids=[uuid4()],
-            attack_vector="Network",
-            impact_level=Level.HIGH,
-            risk_rating=Level.MEDIUM,
-            mitigations=["Mitigation A"],
-        )
-        dummy_attack = Attack(
-            uuid=uuid4(),
-            component_uuid=uuid4(),
-            component="Dummy Component",
-            url="https://example.com/component",
-            parent_id="T1059",
-            parent_name="Dummy Parent",
-            attack_tactic="Execution",
-            technique_id="T1059",
-            technique_name="Command and Scripting Interpreter",
-            reason_for_relevance="This technique allows attackers to execute commands on the system.",
-            mitigation="Use application whitelisting to block unknown scripts.",
-        )
-        dummy_threat_model = ThreatModel(
-            uuid=uuid4(),
-            name="Dummy Threat Model",
-            summary="Dummy summary",
-            asset=dummy_asset,
-            repos=[dummy_repo],
-            data_flow_reports=[dummy_data_flow_report],
-            threats=[dummy_threat],
-            attacks=[dummy_attack],
-        )
-        mock_generate_threat_model.return_value = dummy_threat_model
-
-        # Dummy markdown report.
-        dummy_markdown = "# Dummy Markdown Report\nContent here..."
-        mock_generate_threat_model_report.return_value = dummy_markdown
-
-        # Call main with all output file paths provided.
-        await main.main(
-            yaml_file=str(self.config_file_path),
-            output_file=str(self.markdown_output_path),
-            json_output_file=str(self.json_output_path),
-            sarif_output_file=str(self.sarif_output_path),
-        )
-
-        # Verify Markdown report output.
-        self.assertTrue(
-            self.markdown_output_path.exists(), "Markdown output file does not exist."
-        )
-        with open(self.markdown_output_path, "r") as f:
-            md_content = f.read()
-        self.assertIn("Dummy Markdown Report", md_content)
-
-        # Verify JSON output.
-        self.assertTrue(
-            self.json_output_path.exists(), "JSON output file does not exist."
-        )
-        with open(self.json_output_path, "r") as f:
-            json_content = f.read()
-        self.assertIn("Dummy Threat Model", json_content)
-
-        # Verify SARIF output.
-        self.assertTrue(
-            self.sarif_output_path.exists(), "SARIF output file does not exist."
-        )
-        with open(self.sarif_output_path, "r") as f:
-            sarif_content = f.read()
-        self.assertIn('"version": "2.1.0"', sarif_content)
+    ]
 
 
-if __name__ == "__main__":
-    unittest.main()
+@pytest.fixture
+def test_config_data(test_asset, test_repositories) -> dict:
+    return {
+        "asset": test_asset,
+        "repositories": test_repositories,
+        "config": {
+            "llm_provider": "openai",
+            "categorization_agent_llm": "gpt-4o-mini",
+            "review_agent_llm": "gpt-4o-mini",
+            "threat_model_agent_llm": "gpt-4o-mini",
+            "report_agent_llm": "gpt-4o-mini",
+            "context_window": 128000,
+            "max_output_tokens": 16384,
+            "review_max_file_in_batch": 3,
+            "review_token_buffer": 0.5,
+            "categorize_max_file_in_batch": 30,
+            "categorize_token_buffer": 0.5,
+            "categorize_only": False,
+            "completion_threshold": 0.8,
+        },
+        "exclude_patterns": [],
+    }
+
+
+@pytest.fixture
+def test_config_file(tmp_path, test_config_data) -> Path:
+    config_file_path = tmp_path / "config.yaml"
+    config_file_path.write_text(yaml.dump(test_config_data))
+    return config_file_path
+
+
+def test_load_yaml_config_reads_yaml_file(test_config_file):
+    """Test that a YAML file is read and parsed correctly."""
+    config = load_yaml_config(str(test_config_file))
+    assert config["asset"]["name"] == "Test Asset"
+
+
+def test_load_yaml_config_raises_file_not_found(tmp_path):
+    """Test that load_yaml_config raises FileNotFoundError for nonexistent file."""
+    non_existent_file = tmp_path / "does_not_exist.yaml"
+    with pytest.raises(FileNotFoundError) as exc_info:
+        load_yaml_config(str(non_existent_file))
+    assert "Config file not found" in str(exc_info.value)
+
+
+def test_asset_parsing(test_asset):
+    """Test that the asset parsing function works correctly."""
+    asset = parse_asset(test_asset)
+    assert asset.name == test_asset["name"]
+    assert asset.description == test_asset["description"]
+    assert asset.internet_facing == test_asset["internet_facing"]
+    assert asset.authn_type.name == test_asset["authn_type"]
+    assert asset.data_classification.name == test_asset["data_classification"]
+
+
+def test_parse_repositories(test_repositories, test_asset):
+    """Test that parse_repositories returns Repository objects for valid configs."""
+    asset = parse_asset(test_asset)
+    repos = parse_repositories(test_repositories, asset.uuid)
+    assert len(repos) == 1
+    repo = repos[0]
+    assert repo.name == "Test Repo"
+    assert repo.description == "A test repository"
+    assert repo.url == "https://example.com/repo"
+    assert repo.local_path is None
+    assert repo.asset_uuid == asset.uuid
+
+
+def test_parse_repositories_raises_error_for_both_url_and_local_path(test_asset):
+    """Test that parse_repositories raises ValueError when both url and local_path are provided."""
+    asset = parse_asset(test_asset)
+    bad_repos = [
+        {
+            "name": "Bad Repo",
+            "url": "https://example.com/repo",
+            "local_path": "/tmp/repo",
+        }
+    ]
+    with pytest.raises(ValueError) as exc_info:
+        parse_repositories(bad_repos, asset.uuid)
+    assert "must have either 'url' or 'local_path'" in str(exc_info.value)
+
+
+def test_parse_repositories_raises_error_for_neither_url_nor_local_path(test_asset):
+    """Test that parse_repositories raises ValueError when neither url nor local_path is provided."""
+    asset = parse_asset(test_asset)
+    bad_repos = [{"name": "Bad Repo"}]
+    with pytest.raises(ValueError) as exc_info:
+        parse_repositories(bad_repos, asset.uuid)
+    assert "must have either 'url' or 'local_path'" in str(exc_info.value)
+
+
+def test_build_threat_model_config(test_config_data):
+    """Test that build_threat_model_config creates a ThreatModelConfig instance."""
+    config = build_threat_model_config(
+        test_config_data["config"], test_config_data["exclude_patterns"]
+    )
+    assert config.llm_provider == "openai"
+    assert config.categorization_agent_llm == "gpt-4o-mini"
+    assert config.review_agent_llm == "gpt-4o-mini"
+    assert config.threat_model_agent_llm == "gpt-4o-mini"
+    assert config.report_agent_llm == "gpt-4o-mini"
+    assert config.context_window == 128000
+    assert config.max_output_tokens == 16384
+    assert config.review_max_file_in_batch == 3
+    assert config.review_token_buffer == 0.5
+    assert config.categorize_max_file_in_batch == 30
+    assert config.categorize_token_buffer == 0.5
+    assert not config.categorize_only
+    assert config.completion_threshold == 0.8
+    assert config.username == "test_user"
+    assert config.pat.get_secret_value() == "test_pat"
+
+
+def test_build_threat_model_config_respects_yaml_strategy(test_config_data):
+    """Test that data_flow_report_strategy from YAML overrides the default."""
+    # Choose a non-default strategy constant
+    alternate_strategy = ThreatModelConfig.STRATEGY_COMBINED
+    test_config_data["config"]["data_flow_report_strategy"] = alternate_strategy
+
+    config = build_threat_model_config(
+        test_config_data["config"], test_config_data["exclude_patterns"]
+    )
+    assert config.data_flow_report_strategy == alternate_strategy
+
+
+@pytest.mark.asyncio
+async def test_main(tmp_path, test_config_data, monkeypatch):
+    """Test the main function to ensure it runs without errors."""
+
+    # Mock external dependencies to avoid real network or file operations
+    dummy_threat_model = type(
+        "DummyThreatModel", (), {"model_dump_json": lambda self, indent=4: "{}"}
+    )()
+    future = asyncio.Future()
+    future.set_result(dummy_threat_model)
+    monkeypatch.setattr(
+        "main.generate_threat_model", lambda asset, repositories, config: future
+    )
+    monkeypatch.setattr(
+        "main.generate_threat_model_report",
+        lambda threat_model_config, threat_model: "dummy-report",
+    )
+    monkeypatch.setattr(
+        "main.generate_sarif_log_with_om", lambda threat_model: "dummy-sarif-log"
+    )
+    monkeypatch.setattr("main.sarif_log_to_schema_dict", lambda log: {"runs": []})
+
+    yaml_file = tmp_path / "test_config.yaml"
+    yaml_file.write_text(yaml.dump(test_config_data))
+
+    # Call the main function with the test YAML file
+    await main(
+        str(yaml_file),
+        output_file=str(tmp_path / "output.md"),
+        json_output_file=str(tmp_path / "output.json"),
+        sarif_output_file=str(tmp_path / "output.sarif"),
+    )
+
+    # Assert output files created with expected content
+    assert (tmp_path / "output.md").read_text() == "dummy-report"
+    assert (tmp_path / "output.json").read_text().strip() == "{}"
+    assert '"runs": []' in (tmp_path / "output.sarif").read_text()
