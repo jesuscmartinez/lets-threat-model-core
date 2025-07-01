@@ -1,5 +1,3 @@
-from typing import TypedDict
-from core.agents.threat_model_data_agent import SYSTEM_GENERATE_PROMPT
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.prompts import (
     SystemMessagePromptTemplate,

@@ -82,9 +82,6 @@ class Threat(AgentThreat):
     uuid: UUID = Field(
         default_factory=uuid.uuid4, description="Unique identifier for the threat."
     )
-    data_flow_report_uuid: UUID = Field(
-        ..., description="The ID of the data flow report where the threat was detected."
-    )
 
     class Config:
         from_attributes = True

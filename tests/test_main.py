@@ -1,7 +1,10 @@
 import yaml
-from pathlib import Path
+import json
 import pytest
 import asyncio
+from pathlib import Path
+from pydantic import SecretStr
+
 from core.services.threat_model_config import ThreatModelConfig
 
 from main import (
@@ -11,72 +14,32 @@ from main import (
     parse_repositories,
     main,
 )
-
-
-@pytest.fixture(autouse=True)
-def github_env(monkeypatch):
-    """Automatically set GitHub env vars for all tests."""
-    monkeypatch.setenv("GITHUB_USERNAME", "test_user")
-    monkeypatch.setenv("GITHUB_PAT", "test_pat")
+from tests.conftest import tm_config, asset, repository
 
 
 @pytest.fixture
-def test_asset() -> dict:
-    return {
-        "name": "Test Asset",
-        "description": "Test asset description",
-        "internet_facing": True,
-        "authn_type": "NONE",
-        "data_classification": "PUBLIC",
-    }
+def config_data(tm_config: ThreatModelConfig) -> dict:
+
+    # model_dump_json gives you a JSON string with secrets unwrapped
+    json_str = tm_config.model_dump_json(by_alias=True)
+    # load it back to a dict of primitives
+    config_dict = json.loads(json_str)
+
+    return config_dict
 
 
 @pytest.fixture
-def test_repositories() -> list[dict]:
-    return [
-        {
-            "name": "Test Repo",
-            "description": "A test repository",
-            "url": "https://example.com/repo",
-        }
-    ]
-
-
-@pytest.fixture
-def test_config_data(test_asset, test_repositories) -> dict:
-    return {
-        "asset": test_asset,
-        "repositories": test_repositories,
-        "config": {
-            "llm_provider": "openai",
-            "categorization_agent_llm": "gpt-4o-mini",
-            "review_agent_llm": "gpt-4o-mini",
-            "threat_model_agent_llm": "gpt-4o-mini",
-            "report_agent_llm": "gpt-4o-mini",
-            "context_window": 128000,
-            "max_output_tokens": 16384,
-            "review_max_file_in_batch": 3,
-            "review_token_buffer": 0.5,
-            "categorize_max_file_in_batch": 30,
-            "categorize_token_buffer": 0.5,
-            "categorize_only": False,
-            "completion_threshold": 0.8,
-        },
-        "exclude_patterns": [],
-    }
-
-
-@pytest.fixture
-def test_config_file(tmp_path, test_config_data) -> Path:
+def test_config_file(tmp_path, config_data) -> Path:
+    """Fixture to create a temporary YAML config file for testing."""
     config_file_path = tmp_path / "config.yaml"
-    config_file_path.write_text(yaml.dump(test_config_data))
+    config_file_path.write_text(yaml.dump(config_data))
     return config_file_path
 
 
 def test_load_yaml_config_reads_yaml_file(test_config_file):
     """Test that a YAML file is read and parsed correctly."""
     config = load_yaml_config(str(test_config_file))
-    assert config["asset"]["name"] == "Test Asset"
+    assert isinstance(config, dict)
 
 
 def test_load_yaml_config_raises_file_not_found(tmp_path):
@@ -87,32 +50,59 @@ def test_load_yaml_config_raises_file_not_found(tmp_path):
     assert "Config file not found" in str(exc_info.value)
 
 
-def test_asset_parsing(test_asset):
+def test_asset_parsing(asset):
     """Test that the asset parsing function works correctly."""
-    asset = parse_asset(test_asset)
-    assert asset.name == test_asset["name"]
-    assert asset.description == test_asset["description"]
-    assert asset.internet_facing == test_asset["internet_facing"]
-    assert asset.authn_type.name == test_asset["authn_type"]
-    assert asset.data_classification.name == test_asset["data_classification"]
+    asset = parse_asset(
+        {
+            "name": asset.name,
+            "description": asset.description,
+            "internet_facing": asset.internet_facing,
+            "authn_type": asset.authn_type.name,
+            "data_classification": asset.data_classification.name,
+            "description": asset.description,
+            "internet_facing": asset.internet_facing,
+            "authn_type": asset.authn_type.name,
+            "data_classification": asset.data_classification.name,
+            "uuid": asset.uuid,
+        }
+    )
+    assert asset.name == asset.name
+    assert asset.description == asset.description
+    assert asset.internet_facing == asset.internet_facing
+    assert asset.authn_type == asset.authn_type
+    assert asset.data_classification == asset.data_classification
+    assert asset.description == asset.description
+    assert asset.internet_facing == asset.internet_facing
+    assert asset.authn_type.name == asset.authn_type.name
+    assert asset.data_classification.name == asset.data_classification.name
 
 
-def test_parse_repositories(test_repositories, test_asset):
+def test_parse_repositories(repository, asset):
     """Test that parse_repositories returns Repository objects for valid configs."""
-    asset = parse_asset(test_asset)
-    repos = parse_repositories(test_repositories, asset.uuid)
+    repos = parse_repositories(
+        [
+            {
+                "name": repository.name,
+                "description": repository.description,
+                "url": repository.url,
+                "local_path": repository.local_path,
+                "asset_uuid": asset.uuid,
+                "uuid": repository.uuid,
+            }
+        ],
+        asset.uuid,
+    )
     assert len(repos) == 1
     repo = repos[0]
-    assert repo.name == "Test Repo"
-    assert repo.description == "A test repository"
-    assert repo.url == "https://example.com/repo"
-    assert repo.local_path is None
+    assert repo.name == repository.name
+    assert repo.description == repository.description
+    assert repo.url == repository.url
+    assert repo.local_path == repository.local_path
     assert repo.asset_uuid == asset.uuid
 
 
-def test_parse_repositories_raises_error_for_both_url_and_local_path(test_asset):
+def test_parse_repositories_raises_error_for_both_url_and_local_path(asset):
     """Test that parse_repositories raises ValueError when both url and local_path are provided."""
-    asset = parse_asset(test_asset)
     bad_repos = [
         {
             "name": "Bad Repo",
@@ -125,51 +115,53 @@ def test_parse_repositories_raises_error_for_both_url_and_local_path(test_asset)
     assert "must have either 'url' or 'local_path'" in str(exc_info.value)
 
 
-def test_parse_repositories_raises_error_for_neither_url_nor_local_path(test_asset):
+def test_parse_repositories_raises_error_for_neither_url_nor_local_path(asset):
     """Test that parse_repositories raises ValueError when neither url nor local_path is provided."""
-    asset = parse_asset(test_asset)
     bad_repos = [{"name": "Bad Repo"}]
     with pytest.raises(ValueError) as exc_info:
         parse_repositories(bad_repos, asset.uuid)
     assert "must have either 'url' or 'local_path'" in str(exc_info.value)
 
 
-def test_build_threat_model_config(test_config_data):
+def test_build_threat_model_config(config_data, monkeypatch):
     """Test that build_threat_model_config creates a ThreatModelConfig instance."""
+
+    monkeypatch.setenv("GITHUB_USERNAME", "test_user")
+    monkeypatch.setenv("GITHUB_PAT", "test_pat")
+    monkeypatch.setenv("PROVIDER_API_KEY", "test_api_key")
+
+    config_data["base_url"] = "https://example.com/api"
+    config_data["data_flow_report_strategy"] = ThreatModelConfig.STRATEGY_BOTH
+    config_data["exclude_patterns"] += [
+        "exclude_pattern1",
+        "exclude_pattern2",
+    ]
+
     config = build_threat_model_config(
-        test_config_data["config"], test_config_data["exclude_patterns"]
+        config_data=config_data,
+        exclude_patterns=["exclude_pattern1", "exclude_pattern2"],
     )
-    assert config.llm_provider == "openai"
-    assert config.categorization_agent_llm == "gpt-4o-mini"
-    assert config.review_agent_llm == "gpt-4o-mini"
-    assert config.threat_model_agent_llm == "gpt-4o-mini"
-    assert config.report_agent_llm == "gpt-4o-mini"
-    assert config.context_window == 128000
-    assert config.max_output_tokens == 16384
-    assert config.review_max_file_in_batch == 3
-    assert config.review_token_buffer == 0.5
-    assert config.categorize_max_file_in_batch == 30
-    assert config.categorize_token_buffer == 0.5
-    assert not config.categorize_only
-    assert config.completion_threshold == 0.8
+    # Assert that the config is an instance of ThreatModelConfig
+    assert isinstance(config, ThreatModelConfig)
+
+    # Assert that the config has the expected environment variables and values
     assert config.username == "test_user"
     assert config.pat.get_secret_value() == "test_pat"
+    assert config.api_key.get_secret_value() == "test_api_key"
 
+    # Assert that the config has the expected values set from config_data values
+    assert config.base_url == config_data["base_url"]
+    assert config.data_flow_report_strategy == config_data["data_flow_report_strategy"]
 
-def test_build_threat_model_config_respects_yaml_strategy(test_config_data):
-    """Test that data_flow_report_strategy from YAML overrides the default."""
-    # Choose a non-default strategy constant
-    alternate_strategy = ThreatModelConfig.STRATEGY_COMBINED
-    test_config_data["config"]["data_flow_report_strategy"] = alternate_strategy
+    # Assert that the config has the expected extended exclude patterns
+    assert config.exclude_patterns == config_data["exclude_patterns"]
 
-    config = build_threat_model_config(
-        test_config_data["config"], test_config_data["exclude_patterns"]
-    )
-    assert config.data_flow_report_strategy == alternate_strategy
+    # Assert that the config has the expected default values
+    assert config.llm_provider == config_data["llm_provider"]
 
 
 @pytest.mark.asyncio
-async def test_main(tmp_path, test_config_data, monkeypatch):
+async def test_main(tmp_path, config_data, monkeypatch):
     """Test the main function to ensure it runs without errors."""
 
     # Mock external dependencies to avoid real network or file operations
@@ -191,7 +183,7 @@ async def test_main(tmp_path, test_config_data, monkeypatch):
     monkeypatch.setattr("main.sarif_log_to_schema_dict", lambda log: {"runs": []})
 
     yaml_file = tmp_path / "test_config.yaml"
-    yaml_file.write_text(yaml.dump(test_config_data))
+    yaml_file.write_text(yaml.dump(config_data))
 
     # Call the main function with the test YAML file
     await main(

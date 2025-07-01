@@ -1,18 +1,15 @@
 import logging
-import logging
 import json
 from typing import Any, Dict, List
 
 from pydantic import BaseModel, Field
 
-# LangChain / local imports
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.prompts import (
     SystemMessagePromptTemplate,
     HumanMessagePromptTemplate,
     ChatPromptTemplate,
 )
-from regex import F
 from core.agents.agent_tools import AgentHelper, ainvoke_with_retry
 from langgraph.graph import StateGraph, START, END
 from trustcall import create_extractor

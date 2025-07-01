@@ -13,13 +13,6 @@ def mock_init_chat_model():
         yield mock
 
 
-@pytest.fixture
-def mock_getenv():
-    """Fixture to mock `os.getenv`"""
-    with patch("core.agents.chat_model_manager.os.getenv") as mock:
-        yield mock
-
-
 @pytest.mark.parametrize(
     "provider, model, expected_call",
     [
@@ -75,7 +68,7 @@ def mock_getenv():
         ),
     ],
 )
-def test_get_model(mock_init_chat_model, mock_getenv, provider, model, expected_call):
+def test_get_model(mock_init_chat_model, provider, model, expected_call):
     """Test model creation with different providers."""
 
     created_model = ChatModelManager.get_model(

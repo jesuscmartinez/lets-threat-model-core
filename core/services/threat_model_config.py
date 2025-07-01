@@ -19,8 +19,14 @@ class ThreatModelConfig(RepoDataFlowAgentConfig):
 
     llm_provider: str = Field(default="openai", description="LLM Provider")
 
+    api_key: SecretStr = Field(
+        default=SecretStr("default_api_key"),
+        description="API key for the LLM provider",
+    )
+
     base_url: str = Field(
-        default=str(base_url), description="Base URL for the LLM provider API"
+        default="http://localhost:11434",
+        description="Base URL for the LLM provider API",
     )
 
     categorization_agent_llm: str = Field(

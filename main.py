@@ -96,6 +96,9 @@ def build_threat_model_config(
 ) -> ThreatModelConfig:
     """Creates a ThreatModelConfig instance from YAML data and environment variables."""
 
+    # Start with all values from config_data
+    config_settings = dict(config_data)
+
     defaults = {
         "llm_provider": "openai",
         "categorization_agent_llm": "gpt-4o-mini",
@@ -116,19 +119,17 @@ def build_threat_model_config(
         "data_flow_report_strategy": ThreatModelConfig.STRATEGY_BOTH,
     }
 
-    config_settings = {
-        key: config_data.get(key, default) for key, default in defaults.items()
-    }
+    # Fill in any missing keys with defaults
+    for key, default in defaults.items():
+        config_settings.setdefault(key, default)
+
+        # Ensure all keys are strings for Pydantic kwargs
+        config_settings = {str(k): v for k, v in config_settings.items()}
 
     # Add secure and required environment-based fields
     config_settings["username"] = os.getenv("GITHUB_USERNAME", "")
     config_settings["pat"] = SecretStr(os.getenv("GITHUB_PAT", ""))
-
-    # Optional: support the strategy field
-    if "data_flow_report_strategy" in config_data:
-        config_settings["data_flow_report_strategy"] = config_data[
-            "data_flow_report_strategy"
-        ]
+    config_settings["api_key"] = SecretStr(os.getenv("PROVIDER_API_KEY", ""))
 
     config = ThreatModelConfig(**config_settings)
     config.add_exclude_patterns(exclude_patterns)

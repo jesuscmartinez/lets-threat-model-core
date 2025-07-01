@@ -136,7 +136,9 @@ async def generate_mitre_attack(
     try:
         mitre_attack_agent = MitreAttackAgent(
             model=ChatModelManager.get_model(
-                provider=config.llm_provider, model=config.threat_model_agent_llm
+                provider=config.llm_provider,
+                api_key=config.api_key,
+                model=config.threat_model_agent_llm,
             )
         )
 
@@ -162,7 +164,6 @@ async def generate_mitre_attack(
             Attack.model_validate(
                 {
                     "uuid": uuid.uuid4(),
-                    "data_flow_report_uuid": data_flow_report.uuid,
                     **AgentAttack.model_validate(attack).model_dump(exclude_unset=True),
                 }
             )
@@ -264,10 +265,14 @@ def create_data_flow_agent(
     """Creates a DataFlowAgent for the given repository."""
     return DataFlowAgent(
         categorization_model=ChatModelManager.get_model(
-            provider=config.llm_provider, model=config.categorization_agent_llm
+            provider=config.llm_provider,
+            api_key=config.api_key,
+            model=config.categorization_agent_llm,
         ),
         review_model=ChatModelManager.get_model(
-            provider=config.llm_provider, model=config.report_agent_llm
+            provider=config.llm_provider,
+            api_key=config.api_key,
+            model=config.report_agent_llm,
         ),
         directory=directory,
         username=config.username,
@@ -282,7 +287,9 @@ def generate_dataflow_diagram(
     # Initialize the diagram agent
     diagram_agent = DiagramAgent(
         model=ChatModelManager.get_model(
-            provider=config.llm_provider, model=config.report_agent_llm
+            provider=config.llm_provider,
+            api_key=config.api_key,
+            model=config.report_agent_llm,
         )
     )
 
@@ -327,7 +334,9 @@ async def generate_threats(
     try:
         threat_model_agent = ThreatModelAgent(
             model=ChatModelManager.get_model(
-                provider=config.llm_provider, model=config.threat_model_agent_llm
+                provider=config.llm_provider,
+                api_key=config.api_key,
+                model=config.threat_model_agent_llm,
             )
         )
 
@@ -355,7 +364,6 @@ async def generate_threats(
             Threat.model_validate(
                 {
                     "uuid": uuid.uuid4(),
-                    "data_flow_report_uuid": data_flow_report.uuid,
                     **AgentThreat.model_validate(threat).model_dump(exclude_unset=True),
                 }
             )
@@ -375,7 +383,9 @@ async def generate_threat_model_data(
     try:
         threat_model_data_agent = ThreatModelDataAgent(
             model=ChatModelManager.get_model(
-                provider=config.llm_provider, model=config.report_agent_llm
+                provider=config.llm_provider,
+                api_key=config.api_key,
+                model=config.report_agent_llm,
             )
         )
 
@@ -401,11 +411,14 @@ async def generate_threat_model_data(
 async def merge_data_flows(
     data_flow_reports: List[DataFlowReport], config: ThreatModelConfig
 ) -> DataFlowReport:
+
     logger.info(f"🚀 Starting data flow merger for {len(data_flow_reports)} reports.")
     try:
         merge_agent = MergeDataFlowAgent(
             model=ChatModelManager.get_model(
-                provider=config.llm_provider, model=config.report_agent_llm
+                provider=config.llm_provider,
+                api_key=config.api_key,
+                model=config.report_agent_llm,
             )
         )
 
