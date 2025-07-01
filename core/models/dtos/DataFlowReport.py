@@ -1,19 +1,14 @@
-from re import A
-from typing import List, Dict, Optional
-from pydantic import BaseModel, Field
+import logging
+from typing import List, Optional
 from uuid import UUID, uuid4
+
+from pydantic import BaseModel, Field
+
 from core.models.dtos.MitreAttack import Attack
 from core.models.dtos.Threat import Threat
 from core.models.dtos.File import File
-import os
-import logging
 
-# Configure logging
-log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(
-    level=log_level,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
+
 logger = logging.getLogger(__name__)
 
 

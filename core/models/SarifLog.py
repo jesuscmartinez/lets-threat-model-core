@@ -1,9 +1,5 @@
 from typing import Dict, List, Optional
-from graphviz import render
 from pydantic import BaseModel
-from core.models.dtos.Threat import Threat
-from core.models.enums import StrideCategory, Level
-import uuid
 
 
 class Message(BaseModel):

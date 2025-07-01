@@ -1,11 +1,8 @@
 from pydantic import BaseModel, Field
-from uuid import UUID
-from typing import List, Optional, Dict, Any
+from uuid import UUID, uuid4
+from typing import List
 
-from regex import F
 from core.models.dtos.DataFlowReport import DataFlowReport
-from core.models.dtos.MitreAttack import Attack
-from core.models.dtos.Threat import Threat
 from core.models.dtos.Asset import Asset
 from core.models.dtos.Repository import Repository
 
@@ -36,7 +33,7 @@ class ThreatModel(CreateThreatModel):
     """
 
     uuid: UUID = Field(
-        default_factory=UUID,
+        default_factory=uuid4,
         description="Unique identifier for the threat model.",
     )
 

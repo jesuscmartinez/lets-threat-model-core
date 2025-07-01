@@ -1,26 +1,12 @@
 from datetime import datetime, timezone
-from enum import Enum
-import json
-from logging import config
-from core.agents.chat_model_manager import ChatModelManager
-from core.services.threat_model_config import ThreatModelConfig
-from core.models.dtos.DataFlowReport import DataFlowReport
+from typing import List
+
+from core.models.dtos.File import File
 from core.models.dtos.ThreatModel import ThreatModel
-from core.agents.diagram_agent import DiagramAgent
-from core.models.dtos.DataFlowReport import DataFlow
-from typing import Dict, Set
-from collections import defaultdict
-
-from typing import List
-from datetime import datetime
-from uuid import UUID
-
-from typing import List
-from uuid import uuid4
-from core.models.dtos.Threat import Threat
+from core.services.threat_model_config import ThreatModelConfig
 
 
-def process_files(title, files) -> str:
+def process_files(title, files: List[File]) -> str:
     if not files:
         return f"## {title}\nNo files flagged for {title}.\n\n"
 

@@ -1,7 +1,6 @@
 import json
-from typing import List
 import attr
-from h11 import Data
+from typing import List
 from sarif_om import (
     SarifLog,
     Tool,
@@ -65,7 +64,6 @@ def get_threat_results(data_flow: DataFlowReport) -> List[Result]:
             locations=locations,
             properties={
                 "id": str(threat.uuid),
-                "data_flow_report_id": str(threat.data_flow_report_uuid),
                 "security-severity": str(threat.impact_level.score),
                 "name": threat.name,
                 "description": threat.description,
