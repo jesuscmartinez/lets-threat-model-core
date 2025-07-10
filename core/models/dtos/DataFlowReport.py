@@ -35,6 +35,12 @@ class Component(BaseModel):
 
         return data
 
+    def to_markdown(self) -> str:
+        """
+        Render this Component as a Markdown list item.
+        """
+        return f"- **{self.name}** (UUID: {self.uuid}): {self.description}"
+
 
 class DataFlow(Component):
     """
@@ -195,6 +201,74 @@ class AgentDataFlowReport(BaseModel):
             return False
         return self.overview == other.overview
 
+    def to_markdown(self) -> str:
+        """
+        Render the base DataFlowReport sections (overview, external entities, processes,
+        data stores, and trust boundaries) as a Markdown-formatted string.
+        """
+        lines = []
+        # Overview
+        lines.append(f"# Data Flow Report\n")
+        lines.append(f"**Overview:** {self.overview}\n")
+
+        # External Entities
+        if self.external_entities:
+            lines.append("## External Entities\n")
+            for e in self.external_entities:
+                lines.append(e.to_markdown())
+                if getattr(e, "data_flows", None):
+                    lines.append("  - Data Flows:")
+                    for df in e.data_flows:
+                        lines.append(df.to_markdown())
+            lines.append("")
+
+        # Processes
+        if self.processes:
+            lines.append("## Processes\n")
+            for p in self.processes:
+                lines.append(p.to_markdown())
+                if getattr(p, "input_data", None):
+                    lines.append(f"  - Inputs: {', '.join(p.input_data)}")
+                if getattr(p, "output_data", None):
+                    lines.append(f"  - Outputs: {', '.join(p.output_data)}")
+                if getattr(p, "data_flows", None):
+                    lines.append("  - Data Flows:")
+                    for df in p.data_flows:
+                        lines.append(df.to_markdown())
+            lines.append("")
+
+        # Data Stores
+        if self.data_stores:
+            lines.append("## Data Stores\n")
+            for ds in self.data_stores:
+                lines.append(ds.to_markdown())
+                if getattr(ds, "data_inputs", None):
+                    lines.append(f"  - Data Inputs: {', '.join(ds.data_inputs)}")
+                if getattr(ds, "data_outputs", None):
+                    lines.append(f"  - Data Outputs: {', '.join(ds.data_outputs)}")
+                if getattr(ds, "data_flows", None):
+                    lines.append("  - Data Flows:")
+                    for df in ds.data_flows:
+                        lines.append(df.to_markdown())
+            lines.append("")
+
+        # Trust Boundaries
+        if self.trust_boundaries:
+            lines.append("## Trust Boundaries\n")
+            for tb in self.trust_boundaries:
+                lines.append(f"- **{tb.name}** (UUID: {tb.uuid}): {tb.description}")
+                if getattr(tb, "component_uuids", None):
+                    component_names = []
+                    for comp in (
+                        self.external_entities + self.processes + self.data_stores
+                    ):
+                        if comp.uuid in tb.component_uuids:
+                            component_names.append(comp.name)
+                    lines.append(f"  - Components: {', '.join(component_names)}")
+            lines.append("")
+
+        return "\n".join(lines)
+
     class Config:
         from_attributes = True
         json_schema_extra = {
@@ -339,6 +413,62 @@ class DataFlowReport(AgentDataFlowReport):
         )
 
         return data
+
+    def to_markdown(self) -> str:
+        """
+        Render this DataFlowReport instance as a Markdown-formatted string.
+        """
+        # Begin with base sections from AgentDataFlowReport
+        base_md = super().to_markdown()
+        lines = base_md.splitlines()
+
+        # Report Metadata
+        lines.append("## Report Metadata")
+        lines.append(f"- UUID: {self.uuid}")
+        lines.append(f"- Repository UUID: {self.repository_uuid}\n")
+
+        # Files Review Status
+        lines.append("## Files Review Status\n")
+        lines.append(f"- Should Review ({len(self.should_review)}):")
+        for f in self.should_review:
+            lines.append(f"  {f.to_markdown()}")
+        lines.append(f"- Reviewed ({len(self.reviewed)}):")
+        for f in self.reviewed:
+            lines.append(f"  {f.to_markdown()}")
+        lines.append(f"- Could Review ({len(self.could_review)}):")
+        for f in self.could_review:
+            lines.append(f"  {f.to_markdown()}")
+        lines.append(f"- Should Not Review ({len(self.should_not_review)}):")
+        for f in self.should_not_review:
+            lines.append(f"  {f.to_markdown()}")
+        lines.append(f"- Could Not Review ({len(self.could_not_review)}):")
+        for f in self.could_not_review:
+            lines.append(f"  {f.to_markdown()}")
+        lines.append("")  # blank line
+
+        # Diagram
+        lines.append("## Diagram")
+        lines.append("```")
+        lines.append(self.diagram)
+        lines.append("```")
+
+        # Threats
+        if self.threats:
+            lines.append("## Threats")
+            for t in self.threats:
+                lines.append(f"- **{t.name}** (UUID: {t.uuid}): {t.description}")
+            lines.append("")
+
+        # Attacks
+        if self.attacks:
+            lines.append("## Attacks")
+            for a in self.attacks:
+                lines.append(
+                    f"- **{a.technique_name}** (ID: {a.technique_id}, Tactic: {a.attack_tactic}) against {a.component}"
+                )
+            lines.append("")
+
+        return "\n".join(lines)
 
     class Config:
         from_attributes = True

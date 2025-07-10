@@ -14,3 +14,9 @@ class File(BaseModel):
 
     def __eq__(self, other):
         return isinstance(other, File) and self.file_path == other.file_path
+
+    def to_markdown(self) -> str:
+        """
+        Render this File as a Markdown list item.
+        """
+        return f"- {self.file_path}: {self.justification}"
