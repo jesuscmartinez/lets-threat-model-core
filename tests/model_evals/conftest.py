@@ -5,6 +5,8 @@ import pytest
 
 from core.agents.chat_model_manager import ChatModelManager
 
+pytestmark = pytest.mark.agent
+
 
 @pytest.fixture
 def llm_model():

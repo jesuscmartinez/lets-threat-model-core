@@ -148,7 +148,6 @@ def test_clone_repository_failure(monkeypatch):
     assert "clone error" in str(excinfo.value)
 
 
-@pytest.mark.asyncio
 async def test_process_local_repository_success(
     monkeypatch, tm_config, tmp_path, repository
 ):
@@ -177,7 +176,6 @@ async def test_process_local_repository_success(
     assert result == {"some": "state"}
 
 
-@pytest.mark.asyncio
 async def test_process_local_repository_invalid_path(tm_config, repository):
     # Repository with a non-existent path should error
     repo = repository.copy()
@@ -188,7 +186,6 @@ async def test_process_local_repository_invalid_path(tm_config, repository):
     assert "Local repository path does not exist" in str(excinfo.value)
 
 
-@pytest.mark.asyncio
 async def test_process_remote_repository_success(monkeypatch, tm_config, repository):
     # Prepare a repository with a URL
     repo = repository.copy()
@@ -235,7 +232,6 @@ async def test_process_remote_repository_success(monkeypatch, tm_config, reposit
     assert result == {"key": "value"}
 
 
-@pytest.mark.asyncio
 async def test_process_remote_repository_clone_failure(
     monkeypatch, tm_config, repository
 ):
@@ -371,7 +367,6 @@ def test_build_data_flow_report_minimal(
     assert report.could_not_review[0].file_path == "cnr.txt"
 
 
-@pytest.mark.asyncio
 async def test_generate_data_flow_local(monkeypatch, repository, tm_config):
     # Prepare a repo that looks local
     repo = repository.copy()
@@ -402,7 +397,6 @@ async def test_generate_data_flow_local(monkeypatch, repository, tm_config):
     assert result is sentinel
 
 
-@pytest.mark.asyncio
 async def test_generate_data_flow_remote(monkeypatch, repository, tm_config):
 
     # Prepare a repo that looks remote
@@ -434,7 +428,6 @@ async def test_generate_data_flow_remote(monkeypatch, repository, tm_config):
     assert result is sentinel
 
 
-@pytest.mark.asyncio
 async def test_generate_data_flow_invalid(monkeypatch, repository, tm_config):
     from core.services.threat_model_services import generate_data_flow
 
@@ -448,7 +441,6 @@ async def test_generate_data_flow_invalid(monkeypatch, repository, tm_config):
     assert "Repository must have either a local_path or a URL." in str(excinfo.value)
 
 
-@pytest.mark.asyncio
 async def test_merge_data_flows(monkeypatch, tm_config, make_df):
     from core.models.dtos.File import File
 
@@ -539,7 +531,6 @@ def dummy_data_flow_report():
     )
 
 
-@pytest.mark.asyncio
 async def test_generate_mitre_attack_empty(
     monkeypatch, dummy_data_flow_report, tm_config
 ):
@@ -567,7 +558,6 @@ async def test_generate_mitre_attack_empty(
     assert result == []
 
 
-@pytest.mark.asyncio
 async def test_generate_mitre_attack_with_attack(
     monkeypatch, dummy_data_flow_report, tm_config, attack
 ):
@@ -605,7 +595,6 @@ async def test_generate_mitre_attack_with_attack(
     assert attack.mitigation == attack.mitigation
 
 
-@pytest.mark.asyncio
 async def test_generate_threats_empty(
     monkeypatch, asset, dummy_data_flow_report, tm_config
 ):
@@ -636,7 +625,6 @@ async def test_generate_threats_empty(
     assert result == []
 
 
-@pytest.mark.asyncio
 async def test_generate_threats_with_items(
     monkeypatch, asset, dummy_data_flow_report, tm_config, threat
 ):
@@ -675,7 +663,6 @@ async def test_generate_threats_with_items(
     assert threat_obj.description == threat.description
 
 
-@pytest.mark.asyncio
 async def test_generate_threat_model_data_defaults(
     monkeypatch, threat_model, tm_config
 ):
@@ -708,7 +695,6 @@ async def test_generate_threat_model_data_defaults(
     }
 
 
-@pytest.mark.asyncio
 async def test_generate_threat_model_data_with_values(
     monkeypatch, threat_model, tm_config
 ):
@@ -739,7 +725,6 @@ async def test_generate_threat_model_data_with_values(
     assert result["summary"] == "Generated Summary"
 
 
-@pytest.mark.asyncio
 async def test_skip_data_flow(monkeypatch, tm_config, asset):
     config = tm_config.copy()
     config.generate_data_flow_reports = False
@@ -750,7 +735,6 @@ async def test_skip_data_flow(monkeypatch, tm_config, asset):
     assert tm.summary == "No summary generated."
 
 
-@pytest.mark.asyncio
 async def test_per_repository_strategy(
     monkeypatch, tm_config, asset, repository, make_df
 ):
@@ -785,7 +769,6 @@ async def test_per_repository_strategy(
     assert tm.data_flow_reports == [df1, df2]
 
 
-@pytest.mark.asyncio
 async def test_combined_strategy(
     monkeypatch, asset, repository, tm_config, stub_threat_model_postprocessors, make_df
 ):
@@ -819,7 +802,6 @@ async def test_combined_strategy(
     assert tm.data_flow_reports == [df]
 
 
-@pytest.mark.asyncio
 async def test_both_strategy(
     monkeypatch, asset, repository, tm_config, stub_threat_model_postprocessors, make_df
 ):

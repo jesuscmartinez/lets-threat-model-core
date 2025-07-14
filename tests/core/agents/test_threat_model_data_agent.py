@@ -97,7 +97,6 @@ def test_initialize_valid_data(mock_agent, valid_state):
 # -----------------------------------------------------------------------------
 # Unit Tests for `generate` (Async) Method
 # -----------------------------------------------------------------------------
-@pytest.mark.asyncio
 async def test_generate(mock_agent, mocker, valid_state, monkeypatch):
     """Test the generate method for correctly invoking the LLM chain."""
     # Patch trustcall.create_extractor used inside ThreatModelDataAgent
@@ -117,7 +116,6 @@ async def test_generate(mock_agent, mocker, valid_state, monkeypatch):
 # -----------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_get_workflow_run(mock_agent, valid_state):
     """
     Test that the workflow from get_workflow() runs correctly.

@@ -284,65 +284,65 @@ class ThreatModelAgent:
             )
             return []
 
-    def consolidate_threats(
-        self, state: ThreatGraphStateModel
-    ) -> ThreatGraphStateModel:
-        """Consolidate similar threats within each STRIDE category."""
-        logger.info("🔍 Starting threat consolidation...")
+    # def consolidate_threats(
+    #     self, state: ThreatGraphStateModel
+    # ) -> ThreatGraphStateModel:
+    #     """Consolidate similar threats within each STRIDE category."""
+    #     logger.info("🔍 Starting threat consolidation...")
 
-        class ConsolidationResult(BaseModel):
-            """
-            Represents the consolidated result of a security analysis.
+    #     class ConsolidationResult(BaseModel):
+    #         """
+    #         Represents the consolidated result of a security analysis.
 
-            This model aggregates identified threats from multiple analyses or
-            different components of the system into a single structured result.
-            """
+    #         This model aggregates identified threats from multiple analyses or
+    #         different components of the system into a single structured result.
+    #         """
 
-            threats: List[AgentThreat]
+    #         threats: List[AgentThreat]
 
-        parser = JsonOutputParser(pydantic_object=ConsolidationResult)
-        system_prompt = SystemMessagePromptTemplate.from_template(
-            SYSTEM_PROMPT_CONSOLIDATE,
-            partial_variables={"format_instructions": parser.get_format_instructions()},
-        )
-        user_prompt = HumanMessagePromptTemplate.from_template(
-            "<threats>\n{threats}\n</threats>"
-        )
-        prompt = ChatPromptTemplate.from_messages([system_prompt, user_prompt])
+    #     parser = JsonOutputParser(pydantic_object=ConsolidationResult)
+    #     system_prompt = SystemMessagePromptTemplate.from_template(
+    #         SYSTEM_PROMPT_CONSOLIDATE,
+    #         partial_variables={"format_instructions": parser.get_format_instructions()},
+    #     )
+    #     user_prompt = HumanMessagePromptTemplate.from_template(
+    #         "<threats>\n{threats}\n</threats>"
+    #     )
+    #     prompt = ChatPromptTemplate.from_messages([system_prompt, user_prompt])
 
-        chain = prompt | self.model.with_structured_output(
-            schema=ConsolidationResult.model_json_schema()
-        )
+    #     chain = prompt | self.model.with_structured_output(
+    #         schema=ConsolidationResult.model_json_schema()
+    #     )
 
-        stride_groups: Dict[str, List[Dict[str, Any]]] = {}
-        for threat in state.threats:
-            category = threat.get("stride_category", "Unknown")
-            stride_groups.setdefault(category, []).append(threat)
+    #     stride_groups: Dict[str, List[Dict[str, Any]]] = {}
+    #     for threat in state.threats:
+    #         category = threat.get("stride_category", "Unknown")
+    #         stride_groups.setdefault(category, []).append(threat)
 
-        consolidated: List[Dict[str, Any]] = []
-        for category, group_list in stride_groups.items():
-            try:
-                logger.info("Consolidating threats in category: %s", category)
+    #     consolidated: List[Dict[str, Any]] = []
+    #     for category, group_list in stride_groups.items():
+    #         try:
+    #             logger.info("Consolidating threats in category: %s", category)
 
-                result = invoke_with_retry(
-                    chain, {"threats": json.dumps(group_list, sort_keys=True)}
-                )
+    #             result = invoke_with_retry(
+    #                 chain, {"threats": json.dumps(group_list, sort_keys=True)}
+    #             )
 
-                merged_threats = result.get("threats", [])
-                consolidated.extend(merged_threats)
-            except Exception as e:
-                logger.exception(
-                    "❌ Error consolidating threats in category '%s'", category
-                )
+    #             merged_threats = result.get("threats", [])
+    #             consolidated.extend(merged_threats)
+    #         except Exception as e:
+    #             logger.exception(
+    #                 "❌ Error consolidating threats in category '%s'", category
+    #             )
 
-        logger.info(
-            "✅ Finished threat consolidation. Total consolidated threats: %d",
-            len(consolidated),
-        )
-        self._log_threat_state(consolidated)
+    #     logger.info(
+    #         "✅ Finished threat consolidation. Total consolidated threats: %d",
+    #         len(consolidated),
+    #     )
+    #     self._log_threat_state(consolidated)
 
-        state.threats = consolidated
-        return state
+    #     state.threats = consolidated
+    #     return state
 
     # -------------------------------------------------------------------------
     # Logging / Reporting Helpers

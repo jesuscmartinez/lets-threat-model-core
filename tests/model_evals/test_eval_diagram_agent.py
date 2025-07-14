@@ -1,10 +1,8 @@
-import os
-from pydantic import SecretStr
 import pytest
-from dotenv import load_dotenv
-from core.agents.chat_model_manager import ChatModelManager
-from core.agents.diagram_agent import DiagramAgent, SYSTEM_GENERATE_PROMPT
+from core.agents.diagram_agent import DiagramAgent
 from sentence_transformers import SentenceTransformer, util
+
+pytestmark = pytest.mark.agent
 
 
 @pytest.fixture
@@ -26,7 +24,6 @@ def reference_output():
         """
 
 
-@pytest.mark.asyncio
 async def test_mermaid_generation_regression(
     llm_model, data_flow_report_full, reference_output
 ):

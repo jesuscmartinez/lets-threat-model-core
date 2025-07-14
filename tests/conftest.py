@@ -1,5 +1,6 @@
+from typing import List
 import pytest
-from uuid import uuid4
+from uuid import UUID, uuid4
 from pydantic import SecretStr
 import pytest
 from regex import P
@@ -11,7 +12,7 @@ from core.models.dtos.DataFlowReport import (
     TrustBoundary,
 )
 from core.models.dtos.ThreatModel import ThreatModel
-from core.models.dtos.Threat import Threat
+from core.models.dtos.Threat import Threat, AgentThreat
 from core.models.dtos.Asset import Asset
 from core.models.dtos.Repository import Repository
 from core.models.dtos.MitreAttack import Attack
@@ -229,6 +230,26 @@ def data_flow_report_dict():
             }
         ],
     }
+
+
+@pytest.fixture
+def threats() -> List[Threat]:
+    return [
+        Threat(
+            name="Unauthorized Access to Repository Data",
+            description="An attacker could spoof their identity to gain unauthorized access to repository metadata from GitHub, potentially leading to sensitive information exposure.",
+            stride_category=StrideCategory.SPOOFING,
+            component_names=["GitHub"],
+            component_uuids=[UUID("550e8400-e29b-41d4-a716-446655440003")],
+            attack_vector="An attacker uses stolen credentials or exploits a vulnerability in the authentication mechanism to impersonate a legitimate user and access repository data.",
+            impact_level=Level.HIGH,
+            risk_rating=Level.HIGH,
+            mitigations=[
+                "Implement multi-factor authentication (MFA) for all users accessing GitHub.",
+                "Regularly audit access logs for suspicious activity.",
+            ],
+        )
+    ]
 
 
 @pytest.fixture

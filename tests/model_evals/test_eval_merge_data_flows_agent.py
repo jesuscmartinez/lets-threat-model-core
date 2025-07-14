@@ -1,17 +1,13 @@
 import pytest
 
-from core.agents.diagram_agent import DiagramAgent
 from core.agents.merge_data_flows_agent import (
     MergeDataFlowAgent,
     StateModel,
 )
-import core.agents.merge_data_flows_agent as md
+
+pytestmark = pytest.mark.agent
 
 
-# --------------------------
-# Test case
-# --------------------------
-@pytest.mark.asyncio
 async def test_merge_data_flow_reports(llm_model):
 
     reference_output = {
