@@ -35,9 +35,6 @@ async def test_threat_model_data_generate(
     print("Matching Threats for component ID 550e8400-e29b-41d4-a716-446655440003:")
     pprint(matching_threats)
 
-    from langchain.evaluation import load_evaluator
-    from langchain_core.runnables import RunnableLambda
-
     eval_chain = load_evaluator(
         llm=llm_model, evaluator="pairwise_string", criteria="similarity"
     )
