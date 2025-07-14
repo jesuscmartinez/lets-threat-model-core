@@ -3,3 +3,4 @@ pytest-asyncio==0.25.3
 pytest-mock==3.14.0
 pre-commit==4.2.0
 jsonschema==4.23.0
+sentence-transformers==5.0.0

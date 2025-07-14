@@ -134,7 +134,6 @@ def test_rules_categorization(data_flow_agent, initial_graph_state, tmp_path):
     assert "temp.tmp" in excluded_files
 
 
-@pytest.mark.asyncio
 async def test_categorize_files(data_flow_agent, mocker, initial_graph_state):
     dummy_file = File(file_path="dummy.py", justification="")
     state = copy.deepcopy(initial_graph_state)
@@ -208,7 +207,6 @@ def test_get_report_stats(data_flow_agent, initial_graph_state):
 # -----------------------------------------------------------------------------
 # Integration Test for the Entire Workflow
 # -----------------------------------------------------------------------------
-@pytest.mark.asyncio
 async def test_workflow_run(data_flow_agent, initial_graph_state):
 
     def dummy_initialize(state: GraphStateModel) -> GraphStateModel:

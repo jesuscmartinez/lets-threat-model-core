@@ -67,7 +67,6 @@ def test_finalize_converts_ids(monkeypatch, agent):
     ]
 
 
-@pytest.mark.asyncio
 async def test_process_component_success(monkeypatch, agent):
     component = {"name": "comp1"}
     report = {}
@@ -104,7 +103,6 @@ async def test_process_component_success(monkeypatch, agent):
     assert attacks[0].technique_name == "Some Technique"
 
 
-@pytest.mark.asyncio
 async def test_process_component_exception(monkeypatch, agent, caplog):
     component = {"name": "comp2"}
     report = {}
@@ -121,7 +119,6 @@ async def test_process_component_exception(monkeypatch, agent, caplog):
     assert "Error analyzing component" in caplog.text
 
 
-@pytest.mark.asyncio
 async def test_analyze_with_none_report(agent):
     state = AttackGraphStateModel()
     state.data_flow_report = {}
@@ -130,7 +127,6 @@ async def test_analyze_with_none_report(agent):
     assert new_state.attacks == []
 
 
-@pytest.mark.asyncio
 async def test_analyze_with_empty_report(agent):
     state = AttackGraphStateModel()
     # Default data_flow_report is an empty dict
@@ -144,7 +140,6 @@ def test_get_workflow(agent):
     assert workflow is not None
 
 
-@pytest.mark.asyncio
 async def test_analyze_integration_and_error(monkeypatch, agent: MitreAttackAgent):
     # Prepare a report with two components under 'processes'
     comp_good = {"name": "good"}

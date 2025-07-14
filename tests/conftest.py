@@ -1,8 +1,8 @@
+from typing import List
 import pytest
-from uuid import uuid4
+from uuid import UUID, uuid4
 from pydantic import SecretStr
 import pytest
-from regex import P
 from core.models.dtos.DataFlowReport import (
     DataFlowReport,
     ExternalEntity,
@@ -11,7 +11,7 @@ from core.models.dtos.DataFlowReport import (
     TrustBoundary,
 )
 from core.models.dtos.ThreatModel import ThreatModel
-from core.models.dtos.Threat import Threat
+from core.models.dtos.Threat import Threat, AgentThreat
 from core.models.dtos.Asset import Asset
 from core.models.dtos.Repository import Repository
 from core.models.dtos.MitreAttack import Attack
@@ -83,6 +83,177 @@ def attack() -> Attack:
         reason_for_relevance="Highly relevant",
         mitigation="Use firewall",
     )
+
+
+@pytest.fixture
+def data_flow_report_dict():
+    return {
+        "data_stores": [
+            {
+                "data_flows": [
+                    {
+                        "data_type": "Threat Model Report",
+                        "description": "Stores the generated threat "
+                        "model report for user "
+                        "access.",
+                        "destination_uuid": "550e8400-e29b-41d4-a716-446655440003",
+                        "direction": "outgoing",
+                        "name": "Store Threat Model Report",
+                        "uuid": "550e8400-e29b-41d4-a716-446655440008",
+                    }
+                ],
+                "data_inputs": ["Threat Model Report"],
+                "data_outputs": ["Stored Threat Model Reports"],
+                "description": "Stores generated threat model reports in "
+                "various formats.",
+                "name": "Threat Model Reports Store",
+                "uuid": "550e8400-e29b-41d4-a716-446655440007",
+            }
+        ],
+        "external_entities": [
+            {
+                "data_flows": [
+                    {
+                        "data_type": "YAML Configuration Data",
+                        "description": "User initiates a "
+                        "request to generate a "
+                        "threat model based on "
+                        "a YAML configuration "
+                        "file.",
+                        "destination_uuid": "550e8400-e29b-41d4-a716-446655440002",
+                        "direction": "incoming",
+                        "name": "Generate Threat Model Request",
+                        "uuid": "550e8400-e29b-41d4-a716-446655440001",
+                    }
+                ],
+                "description": "Human users who interact with the "
+                "system to generate threat models and "
+                "reports.",
+                "name": "User",
+                "uuid": "550e8400-e29b-41d4-a716-446655440000",
+            },
+            {
+                "data_flows": [
+                    {
+                        "data_type": "Repository Metadata",
+                        "description": "System retrieves "
+                        "repository data from "
+                        "GitHub for analysis.",
+                        "destination_uuid": "550e8400-e29b-41d4-a716-446655440002",
+                        "direction": "incoming",
+                        "name": "Repository Data Retrieval",
+                        "uuid": "550e8400-e29b-41d4-a716-446655440004",
+                    }
+                ],
+                "description": "External repository hosting service "
+                "where code repositories are stored and "
+                "analyzed.",
+                "name": "GitHub",
+                "uuid": "550e8400-e29b-41d4-a716-446655440003",
+            },
+        ],
+        "overview": "Let's Threat Model is an Agentic AI tool that helps teams "
+        "identify and manage threats early in the development lifecycle. "
+        "Built with extensibility and automation in mind, it brings "
+        "threat modeling into agile workflows by generating actionable "
+        "threat models.",
+        "processes": [
+            {
+                "data_flows": [
+                    {
+                        "data_type": "Threat Model Report",
+                        "description": "Generates a threat model "
+                        "report in specified formats "
+                        "(Markdown, JSON, SARIF).",
+                        "destination_uuid": "550e8400-e29b-41d4-a716-446655440002",
+                        "direction": "outgoing",
+                        "name": "Threat Model Report Generation",
+                        "uuid": "550e8400-e29b-41d4-a716-446655440006",
+                    }
+                ],
+                "description": "Processes the YAML configuration and "
+                "repository data to generate a threat model "
+                "report.",
+                "input_data": [
+                    "YAML Configuration Data",
+                    "Repository Metadata",
+                ],
+                "name": "Threat Model Generation",
+                "output_data": ["Threat Model Report"],
+                "uuid": "550e8400-e29b-41d4-a716-446655440005",
+            }
+        ],
+        "trust_boundaries": [
+            {
+                "component_uuids": [
+                    "550e8400-e29b-41d4-a716-446655440000",
+                    "550e8400-e29b-41d4-a716-446655440003",
+                    "550e8400-e29b-41d4-a716-446655440005",
+                    "550e8400-e29b-41d4-a716-446655440007",
+                ],
+                "description": "Boundary that separates internal "
+                "processing of threat models from "
+                "external entities.",
+                "name": "Internal Processing Boundary",
+                "uuid": "550e8400-e29b-41d4-a716-446655440009",
+            },
+            {
+                "component_uuids": [
+                    "550e8400-e29b-41d4-a716-446655440005",
+                    "550e8400-e29b-41d4-a716-446655440007",
+                ],
+                "description": "Boundary that separates threat model "
+                "data from external influences and "
+                "ensures data integrity.",
+                "name": "Threat Model Data Boundary",
+                "uuid": "550e8400-e29b-41d4-a716-446655440010",
+            },
+        ],
+        "should_review": [
+            {"file_path": "should_review.py", "justification": "should be reviewed"}
+        ],
+        "reviewed": [{"file_path": "reviewed.py", "justification": "already reviewed"}],
+        "could_review": [
+            {"file_path": "could_review.py", "justification": "could be reviewed"}
+        ],
+        "should_not_review": [
+            {
+                "file_path": "should_not_review.py",
+                "justification": "should not be reviewed",
+            }
+        ],
+        "could_not_review": [
+            {
+                "file_path": "could_not_review.py",
+                "justification": "could not be reviewed",
+            }
+        ],
+    }
+
+
+@pytest.fixture
+def threats() -> List[Threat]:
+    return [
+        Threat(
+            name="Unauthorized Access to Repository Data",
+            description="An attacker could spoof their identity to gain unauthorized access to repository metadata from GitHub, potentially leading to sensitive information exposure.",
+            stride_category=StrideCategory.SPOOFING,
+            component_names=["GitHub"],
+            component_uuids=[UUID("550e8400-e29b-41d4-a716-446655440003")],
+            attack_vector="An attacker uses stolen credentials or exploits a vulnerability in the authentication mechanism to impersonate a legitimate user and access repository data.",
+            impact_level=Level.HIGH,
+            risk_rating=Level.HIGH,
+            mitigations=[
+                "Implement multi-factor authentication (MFA) for all users accessing GitHub.",
+                "Regularly audit access logs for suspicious activity.",
+            ],
+        )
+    ]
+
+
+@pytest.fixture
+def data_flow_report_full(data_flow_report_dict) -> DataFlowReport:
+    return DataFlowReport.model_validate(data_flow_report_dict)
 
 
 @pytest.fixture

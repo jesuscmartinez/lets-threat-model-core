@@ -74,7 +74,6 @@ def test_finalize(monkeypatch):
     ]
 
 
-@pytest.mark.asyncio
 async def test_analyze_aggregates_all_components(monkeypatch):
     monkeypatch.setattr(
         tma, "create_extractor", lambda *args, **kwargs: DummyRunnable()

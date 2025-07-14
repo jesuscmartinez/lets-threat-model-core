@@ -160,7 +160,6 @@ def test_build_threat_model_config(config_data, monkeypatch):
     assert config.llm_provider == config_data["llm_provider"]
 
 
-@pytest.mark.asyncio
 async def test_main(tmp_path, config_data, monkeypatch):
     """Test the main function to ensure it runs without errors."""
 
