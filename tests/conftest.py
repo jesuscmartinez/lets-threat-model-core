@@ -1,3 +1,5 @@
+import shutil
+import tempfile
 from typing import List
 import pytest
 from uuid import UUID, uuid4
@@ -305,7 +307,7 @@ def threat_model(asset, repository, data_flow_report) -> ThreatModel:
 
 
 @pytest.fixture
-def make_df(tmp_path):
+def make_df():
     def _make(overview="o", repo_uuid=None):
         from uuid import uuid4
 
@@ -334,3 +336,14 @@ def make_df(tmp_path):
         return DataFlowReport.model_validate(base)
 
     return _make
+
+
+@pytest.fixture
+def temp_test_dir():
+    import os
+
+    data_dir = os.path.join(os.path.dirname(__file__), "core/agents/data")
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        shutil.copytree(data_dir, temp_dir, dirs_exist_ok=True)
+        yield temp_dir
